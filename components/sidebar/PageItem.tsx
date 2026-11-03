@@ -1,0 +1,198 @@
+"use client";
+import { useState, useRef } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ChevronRight, FileText, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import type { TreeNode } from "@/lib/hooks/usePageTree";
+
+type DropPosition = "before" | "inside" | "after" | null;
+
+type Props = {
+  node: TreeNode;
+  depth: number;
+  onCreate: (parentId: string) => void;
+  onArchive: (id: string) => void;
+  onMove: (draggedId: string, parentId: string | null, position: number) => void;
+};
+
+export function PageItem({ node, depth, onCreate, onArchive, onMove }: Props) {
+  const { pageId } = useParams<{ pageId?: string }>();
+  const [open, setOpen] = useState(false);
+  const [dropPosition, setDropPosition] = useState<DropPosition>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  const active = pageId === node.id;
+  const hasChildren = node.children.length > 0;
+
+  const action = "grid h-5 w-5 place-items-center rounded text-[var(--n-text-muted)] hover:bg-[var(--n-active)]";
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", node.id);
+    e.dataTransfer.effectAllowed = "move";
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    setDropPosition(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!rowRef.current) return;
+    const rect = rowRef.current.getBoundingClientRect();
+    const clientY = e.clientY;
+    const topQuarter = rect.top + rect.height * 0.25;
+    const bottomQuarter = rect.bottom - rect.height * 0.25;
+
+    if (clientY < topQuarter) {
+      setDropPosition("before");
+    } else if (clientY > bottomQuarter) {
+      setDropPosition("after");
+    } else {
+      setDropPosition("inside");
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropPosition(null);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const draggedId = e.dataTransfer.getData("text/plain");
+
+    if (!draggedId || draggedId === node.id) {
+      setDropPosition(null);
+      return;
+    }
+
+    if (dropPosition === "inside") {
+      setOpen(true);
+      onMove(draggedId, node.id, Date.now());
+    } else if (dropPosition === "before") {
+      onMove(draggedId, node.parent_id, node.position - 0.5);
+    } else if (dropPosition === "after") {
+      onMove(draggedId, node.parent_id, node.position + 0.5);
+    }
+
+    setDropPosition(null);
+  };
+
+  let dropBorderClass = "";
+  if (dropPosition === "before") {
+    dropBorderClass = "border-t-2 border-[var(--n-accent)]";
+  } else if (dropPosition === "after") {
+    dropBorderClass = "border-b-2 border-[var(--n-accent)]";
+  } else if (dropPosition === "inside") {
+    dropBorderClass = "bg-[var(--n-accent)]/15 ring-1 ring-[var(--n-accent)]/50";
+  }
+
+  return (
+    <div className="relative select-none">
+      <div
+        ref={rowRef}
+        draggable
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`group flex h-[27px] cursor-pointer items-center gap-0.5 rounded pr-1 text-sm transition-colors ${
+          isDragging ? "opacity-40" : ""
+        } ${active ? "bg-[var(--n-active)] font-medium" : "hover:bg-[var(--n-hover)]"} ${dropBorderClass}`}
+        style={{ paddingLeft: 6 + depth * 12 }}
+      >
+        <button
+          aria-label={open ? "Recolher" : "Expandir"}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          className={`${action} shrink-0`}
+        >
+          <ChevronRight
+            size={14}
+            className={`transition-transform ${open ? "rotate-90" : ""} ${hasChildren ? "" : "opacity-40"}`}
+          />
+        </button>
+
+        <Link href={`/workspace/${node.id}`} className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="grid w-5 shrink-0 place-items-center text-[15px]">
+            {node.icon ?? <FileText size={16} className="text-[var(--n-text-muted)]" />}
+          </span>
+          <span className={`truncate ${node.title ? "" : "text-[var(--n-text-faint)]"}`}>
+            {node.title || "Sem título"}
+          </span>
+        </Link>
+
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 data-[open=true]:opacity-100">
+          <Menu.Root>
+            <Menu.Trigger
+              aria-label="Mais opções"
+              className={action}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal size={14} />
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Content
+                align="start"
+                sideOffset={4}
+                className="z-50 min-w-[180px] rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] p-1 text-sm shadow-lg"
+              >
+                <Menu.Item
+                  onSelect={() => onArchive(node.id)}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--n-hover)]"
+                >
+                  <Trash2 size={14} /> Mover para a lixeira
+                </Menu.Item>
+              </Menu.Content>
+            </Menu.Portal>
+          </Menu.Root>
+
+          <button
+            aria-label="Adicionar subpágina"
+            className={action}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+              onCreate(node.id);
+            }}
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        hasChildren ? (
+          node.children.map((c) => (
+            <PageItem
+              key={c.id}
+              node={c}
+              depth={depth + 1}
+              onCreate={onCreate}
+              onArchive={onArchive}
+              onMove={onMove}
+            />
+          ))
+        ) : (
+          <p
+            className="py-1 text-xs text-[var(--n-text-faint)]"
+            style={{ paddingLeft: 34 + depth * 12 }}
+          >
+            Sem subpáginas
+          </p>
+        )
+      )}
+    </div>
+  );
+}
