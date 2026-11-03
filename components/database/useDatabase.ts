@@ -7,6 +7,10 @@ import type { ColumnSchema, DatabaseRow } from "./types";
 export function useDatabase(databaseId: string, initialSchema: ColumnSchema[] = []) {
   const supabase = useRef(createClient()).current;
   const qc = useQueryClient();
+  
+  // Refs para gerenciar o debounce de células (evita sobrecarga no banco)
+  const cellUpdateTimers = useRef<Record<string, NodeJS.Timeout>>({});
+  const pendingCellUpdates = useRef<Record<string, { value: any }>>({});
 
   // Buscar linhas do banco (páginas filhas)
   const rowsQuery = useQuery({
@@ -26,7 +30,6 @@ export function useDatabase(databaseId: string, initialSchema: ColumnSchema[] = 
   // Adicionar nova linha
   const addRow = useMutation({
     mutationFn: async (initialValues: Partial<DatabaseRow> = {}) => {
-      // Buscar workspace_id da database
       const { data: dbPage } = await supabase
         .from("pages")
         .select("workspace_id")
@@ -59,7 +62,7 @@ export function useDatabase(databaseId: string, initialSchema: ColumnSchema[] = 
     },
   });
 
-  // Atualizar célula de uma linha
+  // Atualizar célula de uma linha (Com Debounce nativo para texto/edição rápida)
   const updateCell = useMutation({
     mutationFn: async ({
       rowId,
@@ -70,24 +73,52 @@ export function useDatabase(databaseId: string, initialSchema: ColumnSchema[] = 
       columnId: string;
       value: any;
     }) => {
-      if (columnId === "title") {
-        const { error } = await supabase.from("pages").update({ title: value }).eq("id", rowId);
-        if (error) throw error;
-      } else {
-        const currentRow = rowsQuery.data?.find((r) => r.id === rowId);
-        const currentProps = currentRow?.row_properties ?? {};
-        const updatedProps = { ...currentProps, [columnId]: value };
+      return new Promise<void>((resolve, reject) => {
+        const timerKey = `${rowId}-${columnId}`;
+        
+        // Limpa o timer anterior se existir
+        if (cellUpdateTimers.current[timerKey]) {
+          clearTimeout(cellUpdateTimers.current[timerKey]);
+        }
 
-        const { error } = await supabase
-          .from("pages")
-          .update({ row_properties: updatedProps })
-          .eq("id", rowId);
-        if (error) throw error;
-      }
+        // Armazena o valor mais recente para não perdê-lo
+        pendingCellUpdates.current[timerKey] = { value };
+
+        // Aguarda 600ms após a última digitação/clique antes de mandar pro Supabase
+        cellUpdateTimers.current[timerKey] = setTimeout(async () => {
+          const finalValue = pendingCellUpdates.current[timerKey].value;
+          delete pendingCellUpdates.current[timerKey];
+
+          try {
+            if (columnId === "title") {
+              const { error } = await supabase
+                .from("pages")
+                .update({ title: finalValue })
+                .eq("id", rowId);
+              if (error) throw error;
+            } else {
+              const currentRow = rowsQuery.data?.find((r) => r.id === rowId);
+              const currentProps = currentRow?.row_properties ?? {};
+              const updatedProps = { ...currentProps, [columnId]: finalValue };
+
+              const { error } = await supabase
+                .from("pages")
+                .update({ row_properties: updatedProps })
+                .eq("id", rowId);
+              if (error) throw error;
+            }
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        }, 600);
+      });
     },
     onMutate: async ({ rowId, columnId, value }) => {
       await qc.cancelQueries({ queryKey: ["database_rows", databaseId] });
       const prev = qc.getQueryData<DatabaseRow[]>(["database_rows", databaseId]);
+      
+      // UI Otimista: Atualiza a tela instantaneamente enquanto o debounce roda
       qc.setQueryData<DatabaseRow[]>(["database_rows", databaseId], (old) =>
         old?.map((r) => {
           if (r.id !== rowId) return r;
@@ -101,8 +132,11 @@ export function useDatabase(databaseId: string, initialSchema: ColumnSchema[] = 
       if (ctx?.prev) qc.setQueryData(["database_rows", databaseId], ctx.prev);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["database_rows", databaseId] });
-      qc.invalidateQueries({ queryKey: ["pages"] });
+      // Pequeno delay na invalidação para garantir que requisições assíncronas do supabase terminaram
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["database_rows", databaseId] });
+        qc.invalidateQueries({ queryKey: ["pages"] });
+      }, 700);
     },
   });
 

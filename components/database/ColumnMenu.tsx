@@ -15,6 +15,50 @@ import type { ColumnSchema, ColumnType, SelectOption } from "./types";
 import { NOTION_COLORS } from "./types";
 import { PropertyTypeMenu, getPropertyIcon, getPropertyLabel } from "./PropertyTypeMenu";
 
+// Componente blindado contra sobrescritas do React Query
+function DebouncedOptionInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  const isFocused = useRef(false);
+
+  // Só aceita a atualização externa se o utilizador NÃO estiver a escrever
+  useEffect(() => {
+    if (!isFocused.current) {
+      setLocalValue(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localValue !== value) {
+        onChange(localValue);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [localValue, value, onChange]);
+
+  return (
+    <input
+      type="text"
+      value={localValue}
+      onFocus={() => { isFocused.current = true; }}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={() => {
+        isFocused.current = false;
+        if (localValue !== value) onChange(localValue);
+      }}
+      className={className}
+    />
+  );
+}
+
 type Props = {
   column: ColumnSchema;
   isFirst: boolean;
@@ -44,15 +88,22 @@ export function ColumnMenu({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [subView, setSubView] = useState<"main" | "type" | "options">("main");
+  
   const [name, setName] = useState(column.name);
+  const nameInputFocused = useRef(false);
+  
   const [newOptionName, setNewOptionName] = useState("");
   const [activeColorOptionId, setActiveColorOptionId] = useState<string | null>(null);
 
+  // Aplica a mesma proteção no input do nome principal da coluna
   useEffect(() => {
-    setName(column.name);
+    if (!nameInputFocused.current) {
+      setName(column.name);
+    }
   }, [column.name]);
 
   const handleNameBlur = () => {
+    nameInputFocused.current = false;
     const trimmed = name.trim();
     if (trimmed && trimmed !== column.name) {
       onRename(trimmed);
@@ -134,6 +185,7 @@ export function ColumnMenu({
                 <input
                   type="text"
                   value={name}
+                  onFocus={() => { nameInputFocused.current = true; }}
                   onChange={(e) => setName(e.target.value)}
                   onBlur={handleNameBlur}
                   onKeyDown={handleNameKeyDown}
@@ -208,11 +260,10 @@ export function ColumnMenu({
                           )}
                         </div>
 
-                        {/* Editable Option Text */}
-                        <input
-                          type="text"
+                        {/* Editable Option Text - Debounced e Protegido */}
+                        <DebouncedOptionInput
                           value={opt.value}
-                          onChange={(e) => handleUpdateOption(opt.id, { value: e.target.value })}
+                          onChange={(newVal) => handleUpdateOption(opt.id, { value: newVal })}
                           className="flex-1 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-[var(--n-text)] outline-none hover:border-[var(--n-border)] focus:border-[var(--n-accent)] focus:bg-[var(--n-bg)]"
                         />
 

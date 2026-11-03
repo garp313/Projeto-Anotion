@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { filterSuggestionItems, insertOrUpdateBlock } from "@blocknote/core";
 import { SuggestionMenuController, getDefaultReactSlashMenuItems, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { Minus, MessageSquareQuote } from "lucide-react";
+import { useTheme } from "next-themes";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { schema } from "./blocks";
@@ -13,6 +14,13 @@ type Props = { pageId: string; initialContent: any[] | null; onStatus?: (s: "sav
 
 export function BlockEditor({ pageId, initialContent, onStatus }: Props) {
   const { save, status } = useAutoSave(pageId, 800);
+  const { resolvedTheme } = useTheme(); // Extrai o tema de forma segura
+  const [mounted, setMounted] = useState(false);
+
+  // Garante que o editor só renderize no Client para evitar erros de hidratação
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     onStatus?.(status);
@@ -45,12 +53,14 @@ export function BlockEditor({ pageId, initialContent, onStatus }: Props) {
     [editor]
   );
 
+  if (!mounted) return null; // Previne qualquer flash branco ou mismatch no SSR
+
   return (
     <div className="notion-editor">
       <BlockNoteView
         editor={editor}
         slashMenu={false}
-        theme={typeof window !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"}
+        theme={resolvedTheme === "dark" ? "dark" : "light"}
         onChange={() => save(editor.document)}
       >
         <SuggestionMenuController triggerCharacter="/" getItems={getItems} />
