@@ -8,9 +8,12 @@ const COVERS = [
   "#e9e5e3", "#ffe2dd", "#fdecc8", "#dbeddb", "#d3e5ef",
 ];
 
-export function CoverPicker({ onPick, onRemove }: { onPick: (c: string) => void; onRemove?: () => void }) {
+export function CoverPicker({ onPick, onRemove, onUpload }: { onPick: (c: string) => void; onRemove?: () => void; onUpload?: () => void }) {
   return (
     <div className="w-[320px] rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] p-3 shadow-lg">
+      {onUpload && (
+        <button type="button" onClick={onUpload} className="mb-3 w-full rounded border border-[var(--n-border)] py-1.5 text-sm hover:bg-[var(--n-hover)]">Enviar imagem</button>
+      )}
       <p className="mb-2 text-xs font-medium text-[var(--n-text-faint)]">Cores e gradientes</p>
       <div className="grid grid-cols-5 gap-2">
         {COVERS.map((c) => (
@@ -19,7 +22,6 @@ export function CoverPicker({ onPick, onRemove }: { onPick: (c: string) => void;
         ))}
       </div>
       {onRemove && <button onClick={onRemove} className="mt-3 w-full rounded py-1 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">Remover capa</button>}
-      {/* Próximo passo: aba "Unsplash" via rota /api/unsplash */}
     </div>
   );
 }

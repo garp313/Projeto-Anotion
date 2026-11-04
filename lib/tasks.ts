@@ -25,7 +25,7 @@ export type Task = {
 const DUE_NAME = /prazo|venc|entrega|deadline|data/i;
 
 /** Linhas de todos os bancos que têm data ou responsável: alimenta "Minhas tarefas" e a Agenda. */
-export async function loadTasks(client?: ReturnType<typeof createClient>): Promise<{ tasks: Task[]; hasDatabases: boolean }> {
+export async function loadTasks(client?: ReturnType<typeof createClient>): Promise<{ tasks: Task[]; hasDatabases: boolean; hasTaskDatabase: boolean }> {
   const supabase = client ?? createClient();
   const { data: dbs, error } = await supabase
     .from("pages").select("id,title,database_schema").eq("is_database", true).eq("is_archived", false);
@@ -33,7 +33,8 @@ export async function loadTasks(client?: ReturnType<typeof createClient>): Promi
 
   const schemas = new Map((dbs ?? []).map((d) => [d.id, (d.database_schema?.length ? d.database_schema : DEFAULT_SCHEMA) as ColumnSchema[]]));
   const ids = (dbs ?? []).filter((d) => schemas.get(d.id)!.some((c) => c.type === "date" || c.type === "person")).map((d) => d.id);
-  if (!ids.length) return { tasks: [], hasDatabases: false };
+  const hasTaskDatabase = (dbs ?? []).some((d) => d.title === "Tarefas");
+  if (!ids.length) return { tasks: [], hasDatabases: false, hasTaskDatabase };
 
   const { data: rows, error: rowsError } = await supabase
     .from("pages").select("id,workspace_id,title,icon,parent_id,row_properties").in("parent_id", ids).eq("is_archived", false);
@@ -62,7 +63,7 @@ export async function loadTasks(client?: ReturnType<typeof createClient>): Promi
       schema, row: r,
     };
   });
-  return { tasks, hasDatabases: true };
+  return { tasks, hasDatabases: true, hasTaskDatabase };
 }
 
 export async function setTaskStatus(t: Task, optionId: string) {
