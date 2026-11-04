@@ -25,7 +25,12 @@ const maskDate = (s: string) => {
 };
 
 /** Clicar sobre texto já selecionado desfaz a seleção depois do mouseup: selecionar antes disso não dura. */
-const selectLater = (el: HTMLInputElement) => requestAnimationFrame(() => el.select());
+const selectLater = (el: HTMLInputElement) => {
+  el.select();
+  const before = el.value;
+  // Se já começou a digitar, selecionar agora apagaria o que entrou.
+  requestAnimationFrame(() => { if (el.value === before) el.select(); });
+};
 
 /**
  * Data digitada como dd/mm/aaaa. Só grava ao sair do campo, com Enter ou ao fechar o menu:

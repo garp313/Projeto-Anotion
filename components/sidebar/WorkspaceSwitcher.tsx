@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { ChevronsUpDown, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -6,15 +7,23 @@ import { createClient } from "@/lib/supabase/client";
 
 export function WorkspaceSwitcher({ name = "Workspace" }: { name?: string }) {
   const router = useRouter();
+  const [account, setAccount] = useState<string | null>(null);
+  useEffect(() => {
+    createClient().auth.getSession().then(({ data }) => setAccount(data.session?.user.email ?? null));
+  }, []);
   async function signOut() {
     await createClient().auth.signOut();
     router.push("/login"); router.refresh();
   }
   return (
     <Menu.Root>
-      <Menu.Trigger className="flex h-[34px] w-full items-center gap-2 rounded px-2 text-sm font-medium hover:bg-[var(--n-hover)]">
-        <span className="grid h-5 w-5 place-items-center rounded bg-[var(--n-active)] text-xs font-semibold">{name[0]?.toUpperCase()}</span>
-        <span className="truncate">{name}</span>
+      <Menu.Trigger className="flex h-[38px] w-full items-center gap-2 rounded px-2 text-left text-sm font-medium hover:bg-[var(--n-hover)]">
+        <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-[var(--n-active)] text-xs font-semibold">{name[0]?.toUpperCase()}</span>
+        {/* O nome é do time: sem a conta aqui, todos pareciam logados como o dono do workspace. */}
+        <span className="min-w-0">
+          <span className="block truncate">{name}</span>
+          {account && <span title={account} aria-label="Conta logada" className="block truncate text-[11px] font-normal text-[var(--n-text-faint)]">{account}</span>}
+        </span>
         <ChevronsUpDown size={12} className="ml-auto text-[var(--n-text-faint)]" />
       </Menu.Trigger>
       <Menu.Portal>

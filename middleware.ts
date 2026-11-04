@@ -25,7 +25,12 @@ export async function middleware(req: NextRequest) {
   // Cron e webhooks não têm sessão: cada rota valida o próprio segredo.
   if (/^\/api\/(cron|google\/webhook)\//.test(req.nextUrl.pathname)) return res;
   if (!session && req.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  if (!session && !isAuthRoute && !isOAuthCallback) return NextResponse.redirect(new URL("/login", req.url));
+  if (!session && !isAuthRoute && !isOAuthCallback) {
+    // Link de e-mail sem sessão: depois do login a pessoa cai na tarefa, não na página inicial.
+    const login = new URL("/login", req.url);
+    login.searchParams.set("next", req.nextUrl.pathname + req.nextUrl.search);
+    return NextResponse.redirect(login);
+  }
   if (session && isAuthRoute) return NextResponse.redirect(new URL("/workspace", req.url));
   return res;
 }

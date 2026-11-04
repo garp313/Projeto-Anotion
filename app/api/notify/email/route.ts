@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const sent: string[] = [];
   let reason: string | undefined;
   for (const n of data as { id: string; email: string; body: string; page_id: string | null }[]) {
-    const link = n.page_id ? `\n\nAbrir: ${origin}/workspace/${n.page_id}` : "";
+    const link = n.page_id ? `\n\nAbrir: ${origin}/workspace/${n.page_id}?para=${encodeURIComponent(n.email)}` : "";
     const result = await sendGmail(n.email, n.body, `${n.body}${link}`);
     if (result === "sent") sent.push(n.id);
     else if (result === "not_connected") { reason = result; break; }

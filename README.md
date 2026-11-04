@@ -13,7 +13,9 @@
 - No Supabase, ative o provedor Google e inclua `http://localhost:3000/auth/callback` em Redirect URLs.
 - No Google Cloud, autorize a URI `https://<projeto>.supabase.co/auth/v1/callback` e os escopos
   `calendar` e `gmail.send`. Enquanto o app estiver em teste, cada pessoa precisa ser usuário de teste.
-- Opcional: `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env.local` mantêm a conexão além de 1 hora.
+- Obrigatório para conectar Agenda e Gmail: `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env.local` (os mesmos do provedor Google no Supabase).
+  No cliente OAuth do Google, autorize também a URI `http://localhost:3000/api/google/callback` e a equivalente da produção.
+  Conectar o Google não troca quem está logado no app.
 
 Avisos por e-mail saem do Gmail de quem fez a ação, se essa pessoa tiver conectado o Google.
 Prazos e lembretes aparecem só no Inbox.

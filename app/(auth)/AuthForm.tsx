@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 
 export const RESTRICTED = "Este app é restrito ao time. Peça um convite ao administrador.";
 
-export function AuthForm({ mode, initialError = null }: { mode: "login" | "register"; initialError?: string | null }) {
+export function AuthForm({ mode, initialError = null, next = null }: { mode: "login" | "register"; initialError?: string | null; next?: string | null }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,9 +15,11 @@ export function AuthForm({ mode, initialError = null }: { mode: "login" | "regis
 
   async function signInWithGoogle() {
     setLoading(true); setError(null);
+    if (next) document.cookie = `after_auth=${encodeURIComponent(next)}; path=/; max-age=600; samesite=lax`;
     const { error } = await createClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      // Sem isto o Google entra direto na conta ativa do navegador, que pode ser de outra pessoa.
+      options: { redirectTo: `${window.location.origin}/auth/callback`, queryParams: { prompt: "select_account" } },
     });
     // Em caso de sucesso o navegador já saiu para o Google.
     if (error) { setLoading(false); setError(error.message); }
@@ -32,7 +34,7 @@ export function AuthForm({ mode, initialError = null }: { mode: "login" | "regis
       : await supabase.auth.signUp({ email, password });
     setLoading(false);
     if (error) return setError(/database error/i.test(error.message) ? RESTRICTED : error.message);
-    router.push("/workspace"); router.refresh();
+    router.push(next ?? "/workspace"); router.refresh();
   }
 
   const input = "w-full rounded-md border border-[var(--n-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--n-accent)] focus:ring-2 focus:ring-[var(--n-accent)]/20";

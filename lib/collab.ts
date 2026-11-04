@@ -56,15 +56,7 @@ export function scheduleEmails(delay = 2500) {
   timer = setTimeout(() => { void fetch("/api/notify/email", { method: "POST" }).catch(() => { /* fica na fila por 1 hora */ }); }, delay);
 }
 
-export async function connectGoogle() {
-  // O callback lê este cookie para saber que deve guardar os tokens e voltar para a Agenda.
-  document.cookie = "after_auth=/agenda; path=/; max-age=600; samesite=lax";
-  await createClient().auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-      scopes: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
-      queryParams: { access_type: "offline", prompt: "consent" },
-    },
-  });
+/** Autoriza o Google para a conta já logada, sem trocar quem está no app. Volta para a mesma tela. */
+export function connectGoogle() {
+  window.location.href = `/api/google/connect?next=${encodeURIComponent(window.location.pathname)}`;
 }

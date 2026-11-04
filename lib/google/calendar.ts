@@ -5,14 +5,17 @@ import { accessTokenFor } from "./tokens";
 
 export const ACCESS_COOKIE = "g_at";
 export const REFRESH_COOKIE = "g_rt";
+/** Cookie é do navegador, não da pessoa: sem este dono, quem entrasse depois usaria a conta Google anterior. */
+export const OWNER_COOKIE = "g_uid";
 const API = "https://www.googleapis.com/calendar/v3";
 const secure = process.env.NODE_ENV === "production";
 
 /** Tokens do Google ficam em cookies httpOnly: o JavaScript da página nunca os enxerga. */
-export async function storeGoogleTokens(access: string, refresh?: string | null, expiresIn = 3500) {
+export async function storeGoogleTokens(access: string, refresh: string | null | undefined, expiresIn: number, userId: string) {
   const store = await cookies();
   const base = { httpOnly: true, sameSite: "lax" as const, secure, path: "/" };
   store.set(ACCESS_COOKIE, access, { ...base, maxAge: expiresIn });
+  store.set(OWNER_COOKIE, userId, { ...base, maxAge: 60 * 60 * 24 * 180 });
   if (refresh) store.set(REFRESH_COOKIE, refresh, { ...base, maxAge: 60 * 60 * 24 * 180 });
 }
 
@@ -20,22 +23,25 @@ export async function clearGoogleTokens() {
   const store = await cookies();
   store.delete(ACCESS_COOKIE);
   store.delete(REFRESH_COOKIE);
+  store.delete(OWNER_COOKIE);
 }
 
 export async function accessToken(): Promise<string | null> {
   const store = await cookies();
-  const current = store.get(ACCESS_COOKIE)?.value;
+  const { data: { user } } = await (await createClient()).auth.getUser();
+  if (!user) return null;
+  const mine = store.get(OWNER_COOKIE)?.value === user.id;
+  const current = mine ? store.get(ACCESS_COOKIE)?.value : undefined;
   if (current) return current;
 
   // Conta guardada no servidor vale em qualquer aparelho; o cookie é só o cache de 1 hora.
-  const { data: { user } } = await (await createClient()).auth.getUser();
-  const stored = user ? await accessTokenFor(user.id) : null;
+  const stored = await accessTokenFor(user.id);
   if (stored) {
-    await storeGoogleTokens(stored, null, 3000);
+    await storeGoogleTokens(stored, null, 3000, user.id);
     return stored;
   }
 
-  const refresh = store.get(REFRESH_COOKIE)?.value;
+  const refresh = mine ? store.get(REFRESH_COOKIE)?.value : undefined;
   const { GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: secret } = process.env;
   if (!refresh || !id || !secret) return null;
 
@@ -46,7 +52,7 @@ export async function accessToken(): Promise<string | null> {
   });
   if (!res.ok) return null;
   const data = await res.json();
-  await storeGoogleTokens(data.access_token, null, Math.max(60, data.expires_in - 60));
+  await storeGoogleTokens(data.access_token, null, Math.max(60, data.expires_in - 60), user.id);
   return data.access_token;
 }
 
