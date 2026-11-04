@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import type { ColumnSchema } from "@/components/database/types";
 
 export type PageRow = {
   id: string; workspace_id: string; parent_id: string | null;
@@ -11,12 +12,18 @@ export type PageRow = {
 };
 export type PageFull = PageRow & {
   content_json: any[];
-  database_schema?: any[];
+  database_schema?: ColumnSchema[];
   row_properties?: Record<string, any>;
 };
 export type TreeNode = PageRow & { children: TreeNode[] };
 
 const LIST = "id,workspace_id,parent_id,title,icon,cover,position,is_database";
+
+export async function fetchPage(id: string): Promise<PageFull> {
+  const { data, error } = await createClient().from("pages").select("*").eq("id", id).single();
+  if (error) throw error;
+  return data as PageFull;
+}
 
 export function buildTree(rows: PageRow[]): TreeNode[] {
   const map = new Map<string, TreeNode>();
@@ -69,7 +76,7 @@ export function usePageTree() {
   });
 
   const updatePage = useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: Partial<PageRow> }) => {
+    mutationFn: async ({ id, patch }: { id: string; patch: Partial<PageFull> }) => {
       const { error } = await supabase.from("pages").update(patch).eq("id", id);
       if (error) throw error;
     },
@@ -79,6 +86,8 @@ export function usePageTree() {
       const prev = qc.getQueryData<PageRow[]>(["pages"]);
       qc.setQueryData<PageRow[]>(["pages"], (old) => old?.map((p) => (p.id === id ? { ...p, ...patch } : p)));
       qc.setQueryData<PageFull>(["page", id], (old) => (old ? { ...old, ...patch } : old));
+      // mantém a tabela em dia quando a linha é editada na própria página
+      qc.setQueriesData<any[]>({ queryKey: ["database_rows"] }, (old) => old?.map((r) => (r.id === id ? { ...r, ...patch } : r)));
       return { prev };
     },
     onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(["pages"], ctx.prev),

@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../app";
+@source "../components";
+@source "../lib";
 
 /* Tokens do Notion (claro/escuro) */
 :root {
@@ -50,6 +53,9 @@ body {
 .notion-editor .bn-side-menu { opacity: 0; transition: opacity .12s; }
 .notion-editor .bn-block-outer:hover > .bn-block > .bn-block-content, .notion-editor:hover .bn-side-menu { opacity: 1; }
 .notion-editor .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before { color: var(--n-text-faint); }
+
+.n-progress { background: linear-gradient(90deg, transparent, var(--n-accent), transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: n-progress 1s ease-in-out infinite; }
+@keyframes n-progress { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 
 .n-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .n-scroll:hover { scrollbar-color: var(--n-active) transparent; }

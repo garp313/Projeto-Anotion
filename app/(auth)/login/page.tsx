@@ -1,10 +1,6 @@
-import { Suspense } from "react";
 import { AuthForm } from "../AuthForm";
 
-export default function Page() {
-  return (
-    <Suspense fallback={<div className="grid min-h-screen place-items-center text-xs text-[var(--n-text-faint)]">Carregando…</div>}>
-      <AuthForm mode="login" />
-    </Suspense>
-  );
+export default async function Page({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams;
+  return <AuthForm mode="login" initialError={error === "oauth" ? "Não foi possível entrar com o Google. Tente novamente." : null} />;
 }

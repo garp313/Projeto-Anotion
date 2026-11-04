@@ -1,125 +1,100 @@
 "use client";
-
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { LogOut, Plus, Trash2 } from "lucide-react";
-import { createBrowserClient } from "@supabase/ssr";
-
-export type PageItem = {
-  id: string;
-  title: string;
-  icon?: string | null;
-};
-
-// Lista de páginas iniciais simuladas
-const INITIAL_PAGES: PageItem[] = [
-  { id: "1", title: "Projetos", icon: "💼" },
-  { id: "2", title: "Planejamento Logístico", icon: "🦺" },
-  { id: "3", title: "Atividades", icon: "🔖" },
-];
+import { CalendarDays, ChevronsLeft, ListChecks, Menu, Plus, Search } from "lucide-react";
+import { useSidebar } from "@/lib/store/sidebar";
+import { useEmptyPageCleanup } from "@/lib/hooks/useEmptyPageCleanup";
+import { usePageTree } from "@/lib/hooks/usePageTree";
+import { PageTree } from "./PageTree";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 export function Sidebar() {
-  const params = useParams();
-  const router = useRouter();
-  const activeId = params?.pageId as string;
+  const { collapsed, width, toggle, setWidth } = useSidebar();
+  const { tree, pages, workspace, createPage, archivePage, movePage } = usePageTree();
+  const dragging = useRef(false);
+  useEmptyPageCleanup(pages.data);
 
-  // Estado que guarda as páginas da barra lateral
-  const [pages, setPages] = useState<PageItem[]>(INITIAL_PAGES);
+  // Ctrl+\ (ou Cmd+\)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "\\") { e.preventDefault(); toggle(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggle]);
 
-  // Função para criar uma nova aba/página
-  const handleAddPage = () => {
-    const newId = crypto.randomUUID(); // Gera um ID único
-    const newPage = { id: newId, title: "Nova Página", icon: "📄" };
-    
-    setPages((prev) => [...prev, newPage]);
-    
-    // Redireciona automaticamente para a aba recém-criada
-    router.push(`/workspace/${newId}`);
-  };
+  // arrastar a borda direita
+  useEffect(() => {
+    const move = (e: PointerEvent) => dragging.current && setWidth(e.clientX);
+    const up = () => { dragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+  }, [setWidth]);
 
-  // Função para excluir uma aba/página
-  const handleDeletePage = (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta página?")) return;
-    
-    setPages((prev) => prev.filter((p) => p.id !== id));
-    
-    // Se estiver a excluir a página que está aberta, volta para a primeira
-    if (activeId === id && pages.length > 1) {
-      const firstPage = pages.find((p) => p.id !== id);
-      if (firstPage) router.push(`/workspace/${firstPage.id}`);
-    }
-  };
-
-  const handleLogout = async () => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-    await supabase.auth.signOut();
-    router.push("/login");
-  };
+  const row = "flex h-[27px] w-full items-center gap-2 rounded px-2 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]";
 
   return (
-    <aside className="w-64 h-full bg-[var(--n-bg-sidebar)] border-r border-[var(--n-border)] p-3 flex flex-col justify-between select-none">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between px-2 py-1 text-xs font-semibold text-[var(--n-text-faint)] uppercase tracking-wider">
-          <span>Páginas</span>
-          {/* BOTÃO + AGORA FUNCIONA */}
-          <button
-            onClick={handleAddPage}
-            className="p-1 rounded hover:bg-[var(--n-hover)] text-[var(--n-text)] transition-colors"
-            title="Criar nova aba/página"
-          >
-            <Plus size={14} />
-          </button>
+    <>
+      {collapsed && (
+        <button aria-label="Abrir barra lateral (Ctrl+\)" onClick={toggle}
+          className="fixed left-2 top-2 z-30 grid h-7 w-7 place-items-center rounded text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">
+          <Menu size={16} />
+        </button>
+      )}
+      <aside
+        aria-hidden={collapsed}
+        style={{ width: collapsed ? 0 : width }}
+        className="relative shrink-0 overflow-hidden bg-[var(--n-bg-sidebar)] transition-[width] duration-200 ease-out data-[drag=true]:transition-none"
+      >
+        <div style={{ width }} className="flex h-full flex-col">
+          <div className="flex items-center gap-1 p-1.5 pb-0">
+            <div className="min-w-0 flex-1"><WorkspaceSwitcher name={workspace.data?.name} /></div>
+            <button aria-label="Fechar barra lateral" onClick={toggle} className="grid h-6 w-6 place-items-center rounded text-[var(--n-text-faint)] hover:bg-[var(--n-hover)]">
+              <ChevronsLeft size={16} />
+            </button>
+          </div>
+
+          <div className="space-y-px px-1.5 py-1">
+            <button className={row} onClick={() => window.dispatchEvent(new CustomEvent("open-search"))}>
+              <Search size={16} /> Buscar <kbd className="ml-auto text-xs text-[var(--n-text-faint)]">Ctrl K</kbd>
+            </button>
+            <Link href="/tarefas" className={row}><ListChecks size={16} /> Minhas tarefas</Link>
+            <Link href="/agenda" className={row}><CalendarDays size={16} /> Agenda</Link>
+          </div>
+
+          <div className="n-scroll flex-1 overflow-y-auto px-1.5 pb-2">
+            <div className="group flex items-center px-2 pb-1 pt-3 text-xs font-medium text-[var(--n-text-faint)]">
+              Páginas
+              <button aria-label="Nova página" onClick={() => createPage.mutate(null)}
+                className="ml-auto grid h-5 w-5 place-items-center rounded opacity-0 hover:bg-[var(--n-active)] group-hover:opacity-100">
+                <Plus size={14} />
+              </button>
+            </div>
+            {pages.isLoading
+              ? <div className="space-y-1 px-2">{[70, 55, 80].map((w) => <div key={w} style={{ width: `${w}%` }} className="h-4 animate-pulse rounded bg-[var(--n-hover)]" />)}</div>
+              : <PageTree
+                  tree={tree}
+                  onCreate={(id) => createPage.mutate(id)}
+                  onArchive={(id) => archivePage.mutate(id)}
+                  onMove={(id, parentId, position) => movePage.mutate({ id, parentId, position })}
+                />}
+          </div>
+
+          <div className="border-t border-[var(--n-border)] p-1.5">
+            <button className={row} onClick={() => createPage.mutate(null)}><Plus size={16} /> Nova página</button>
+          </div>
         </div>
 
-        <nav className="flex flex-col gap-0.5">
-          {pages.map((item) => {
-            const isActive = item.id === activeId;
-            return (
-              <div key={item.id} className="group relative flex items-center">
-                <Link
-                  href={`/workspace/${item.id}`}
-                  className={`flex-1 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                    isActive
-                      ? "bg-[var(--n-hover)] text-[var(--n-text)] font-semibold"
-                      : "text-[var(--n-text-muted)] hover:bg-[var(--n-hover)] hover:text-[var(--n-text)]"
-                  }`}
-                >
-                  <span>{item.icon || "📄"}</span>
-                  <span className="truncate">{item.title || "Sem título"}</span>
-                </Link>
-
-                {/* BOTÃO DE LIXO PARA EXCLUIR */}
-                <button
-                  onClick={(e) => {
-                    e.preventDefault(); // Evita que o clique navegue para a página
-                    handleDeletePage(item.id);
-                  }}
-                  className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 bg-[var(--n-bg-sidebar)] text-[var(--n-text-faint)] hover:text-red-400 rounded transition-opacity"
-                  title="Excluir aba"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            );
-          })}
-        </nav>
-      </div>
-
-      <div className="border-t border-[var(--n-border)] pt-2">
-        <button
-          onClick={handleLogout}
-          className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-[var(--n-hover)] transition-colors"
-        >
-          <LogOut size={14} />
-          <span>Sair da conta</span>
-        </button>
-      </div>
-    </aside>
+        {!collapsed && (
+          <div
+            role="separator" aria-orientation="vertical" aria-label="Redimensionar barra lateral"
+            onPointerDown={() => { dragging.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; }}
+            onDoubleClick={() => setWidth(260)}
+            className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-[var(--n-accent)]/40 active:bg-[var(--n-accent)]/60"
+          />
+        )}
+      </aside>
+    </>
   );
 }
-
-export default Sidebar;

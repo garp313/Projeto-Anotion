@@ -1,26 +1,28 @@
 "use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { FilePlus2 } from "lucide-react";
+import { usePageTree } from "@/lib/hooks/usePageTree";
 
-import { use } from "react";
-import { useState } from "react";
-import PageView from "@/components/editor/PageView";
+export default function WorkspaceHome() {
+  const router = useRouter();
+  const { tree, pages, workspace, createPage } = usePageTree();
 
-export default function WorkspacePage({ params }: { params: Promise<{ pageId: string }> }) {
-  const resolvedParams = use(params);
-  
-  // Estado local da página atual
-  const [pageData, setPageData] = useState({
-    id: resolvedParams.pageId,
-    title: "Projetos",
-    icon: "💼",
-    coverUrl: null,
-    content: null,
-    properties: {},
-  });
+  useEffect(() => {
+    if (tree[0]) router.replace(`/workspace/${tree[0].id}`);
+  }, [tree, router]);
 
-  const handleUpdate = (updates: any) => {
-    setPageData((prev) => ({ ...prev, ...updates }));
-    // Aqui podes adicionar a chamada de sincronização com a base de dados/Supabase
-  };
+  if (pages.isLoading || workspace.isLoading || tree[0]) return null;
 
-  return <PageView page={pageData} onUpdatePage={handleUpdate} />;
+  return (
+    <div className="grid h-full place-items-center">
+      <div className="text-center">
+        <p className="mb-3 text-[var(--n-text-muted)]">Você ainda não tem páginas.</p>
+        <button onClick={() => createPage.mutate(null)}
+          className="inline-flex items-center gap-2 rounded-md bg-[var(--n-accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-95">
+          <FilePlus2 size={16} /> Criar primeira página
+        </button>
+      </div>
+    </div>
+  );
 }

@@ -1,6 +1,9 @@
 "use client";
+import dynamic from "next/dynamic";
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
+
+const DatabaseView = dynamic(() => import("@/components/database/DatabaseView").then((m) => m.DatabaseView), { ssr: false });
 
 /** Callout com emoji clicável (alterna entre alguns emojis ao clicar). */
 const EMOJIS = ["💡", "⚠️", "✅", "📌", "❗", "🔥"];
@@ -37,6 +40,18 @@ export const Divider = createReactBlockSpec(
   { render: () => <hr className="my-3 w-full border-t border-[var(--n-border)]" /> }
 );
 
+/** Banco de dados inline: as linhas vivem numa página-filha, o bloco só a exibe. */
+export const DatabaseBlock = createReactBlockSpec(
+  { type: "database", propSchema: { databaseId: { default: "" } }, content: "none" },
+  {
+    render: ({ block }) => (
+      <div contentEditable={false} className="my-2 w-full">
+        {block.props.databaseId && <DatabaseView databaseId={block.props.databaseId} />}
+      </div>
+    ),
+  }
+);
+
 export const schema = BlockNoteSchema.create({
-  blockSpecs: { ...defaultBlockSpecs, callout: Callout, divider: Divider },
+  blockSpecs: { ...defaultBlockSpecs, callout: Callout, divider: Divider, database: DatabaseBlock },
 });

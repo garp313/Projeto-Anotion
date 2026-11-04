@@ -1,10 +1,13 @@
 "use client";
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { ChevronRight, FileText, MoreHorizontal, Plus, Trash2 } from "lucide-react";
-import type { TreeNode } from "@/lib/hooks/usePageTree";
+import { useQueryClient } from "@tanstack/react-query";
+import { fetchPage, type TreeNode } from "@/lib/hooks/usePageTree";
+
+const contains = (n: TreeNode, id?: string): boolean => n.children.some((c) => c.id === id || contains(c, id));
 
 type DropPosition = "before" | "inside" | "after" | null;
 
@@ -24,6 +27,10 @@ export function PageItem({ node, depth, onCreate, onArchive, onMove }: Props) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   const active = pageId === node.id;
+  const qc = useQueryClient();
+  // Abre os ancestrais para a página atual sempre estar visível e destacada.
+  const holdsActive = contains(node, pageId);
+  useEffect(() => { if (holdsActive) setOpen(true); }, [holdsActive]);
   const hasChildren = node.children.length > 0;
 
   const action = "grid h-5 w-5 place-items-center rounded text-[var(--n-text-muted)] hover:bg-[var(--n-active)]";
@@ -124,7 +131,8 @@ export function PageItem({ node, depth, onCreate, onArchive, onMove }: Props) {
           />
         </button>
 
-        <Link href={`/workspace/${node.id}`} className="flex min-w-0 flex-1 items-center gap-1.5">
+        <Link href={`/workspace/${node.id}`} className="flex min-w-0 flex-1 items-center gap-1.5"
+          onMouseEnter={() => void qc.prefetchQuery({ queryKey: ["page", node.id], queryFn: () => fetchPage(node.id), staleTime: Infinity })}>
           <span className="grid w-5 shrink-0 place-items-center text-[15px]">
             {node.icon ?? <FileText size={16} className="text-[var(--n-text-muted)]" />}
           </span>

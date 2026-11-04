@@ -1,37 +1,27 @@
-import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isCorporateEmail } from "@/lib/auth/emailValidation";
+import { storeGoogleTokens } from "@/lib/google/calendar";
 
-export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const origin = requestUrl.origin;
+// Retorno do login com Google: troca o código pela sessão e grava os cookies.
+export async function GET(req: NextRequest) {
+  const { searchParams, origin } = new URL(req.url);
+  const code = searchParams.get("code");
 
   if (code) {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (error) {
-      console.error("Erro ao autenticar com Google:", error.message);
-      return NextResponse.redirect(`${origin}/login?error=auth_failed`);
-    }
-
-    const email = data.user?.email;
-    const validation = isCorporateEmail(email);
-
-    // Validação estrita: apenas e-mails corporativos permitidos
-    if (!validation.isValid) {
-      console.warn(`Tentativa de acesso barrada para e-mail não corporativo: ${email}`);
-      // Forçar logout e revogar sessão
-      await supabase.auth.signOut();
-
-      const reasonMsg = encodeURIComponent(
-        validation.reason || "Apenas e-mails corporativos são autorizados."
-      );
-      return NextResponse.redirect(`${origin}/login?error=corporate_email_only&msg=${reasonMsg}`);
+    if (!error) {
+      const store = await cookies();
+      const after = store.get("after_auth")?.value;
+      store.delete("after_auth");
+      // Só o fluxo "Conectar agenda" pede o escopo do calendário.
+      if (after === "/agenda" && data.session?.provider_token) {
+        await storeGoogleTokens(data.session.provider_token, data.session.provider_refresh_token);
+        return NextResponse.redirect(`${origin}/agenda`);
+      }
+      return NextResponse.redirect(`${origin}/workspace`);
     }
   }
-
-  // Login corporativo bem-sucedido
-  return NextResponse.redirect(`${origin}/workspace`);
+  return NextResponse.redirect(`${origin}/login?error=oauth`);
 }

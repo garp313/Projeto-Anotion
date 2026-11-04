@@ -1,6 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { isCorporateEmail } from "@/lib/auth/emailValidation";
 
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: req });
@@ -18,29 +17,14 @@ export async function middleware(req: NextRequest) {
       },
     }
   );
-
-  const isCallback = req.nextUrl.pathname.startsWith("/auth/callback");
-  if (isCallback) return res;
-
-  const { data: { user } } = await supabase.auth.getUser();
+  // Lê a sessão do cookie (renova se expirou) sem ida à rede: aqui só decidimos o redirect;
+  // quem protege os dados é o RLS, que valida o JWT em cada consulta.
+  const { data: { session } } = await supabase.auth.getSession();
   const isAuthRoute = req.nextUrl.pathname.startsWith("/login") || req.nextUrl.pathname.startsWith("/register");
-
-  if (user) {
-    // Validar se o e-mail logado é estritamente corporativo
-    const validation = isCorporateEmail(user.email);
-    if (!validation.isValid) {
-      await supabase.auth.signOut();
-      return NextResponse.redirect(new URL("/login?error=corporate_email_only", req.url));
-    }
-
-    if (isAuthRoute) {
-      return NextResponse.redirect(new URL("/workspace", req.url));
-    }
-  } else if (!isAuthRoute) {
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
-
+  const isOAuthCallback = req.nextUrl.pathname.startsWith("/auth/callback");
+  if (!session && req.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!session && !isAuthRoute && !isOAuthCallback) return NextResponse.redirect(new URL("/login", req.url));
+  if (session && isAuthRoute) return NextResponse.redirect(new URL("/workspace", req.url));
   return res;
 }
-
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|css|js|woff2?)$).*)"] };

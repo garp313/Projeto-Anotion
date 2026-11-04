@@ -1,182 +1,70 @@
 "use client";
-
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type AuthFormProps = {
-  mode?: "login" | "signup";
-};
-
-export function AuthForm({ mode = "login" }: AuthFormProps) {
+export function AuthForm({ mode, initialError = null }: { mode: "login" | "register"; initialError?: string | null }) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(initialError);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const supabase = createClient();
+  async function signInWithGoogle() {
+    setLoading(true); setError(null);
+    const { error } = await createClient().auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    // Em caso de sucesso o navegador já saiu para o Google.
+    if (error) { setLoading(false); setError(error.message); }
+  }
 
-  // Função de Login com Google contendo os Escopos das ferramentas
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setErrorMsg(null);
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          // Escopos para acessar o Google Calendar, Drive e Sheets
-          scopes: [
-            "https://www.googleapis.com/auth/calendar.readonly",
-            "https://www.googleapis.com/auth/drive.readonly",
-            "https://www.googleapis.com/auth/spreadsheets",
-          ].join(" "),
-          queryParams: {
-            access_type: "offline", // Mantém o refresh token ativo no Supabase
-            prompt: "consent",      // Garante que o usuário aceite os novos escopos
-          },
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) {
-        setErrorMsg(error.message);
-      }
-    } catch (err: any) {
-      setErrorMsg("Ocorreu um erro ao tentar entrar com o Google.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Login / Cadastro manual com Email e Senha
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    setErrorMsg(null);
+    setLoading(true); setError(null);
+    const supabase = createClient();
+    const { error } = mode === "login"
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password });
+    setLoading(false);
+    if (error) return setError(error.message);
+    router.push("/workspace"); router.refresh();
+  }
 
-    try {
-      if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
-          },
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        window.location.href = "/workspace";
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || "Erro na autenticação.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  const input = "w-full rounded-md border border-[var(--n-border)] bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--n-accent)] focus:ring-2 focus:ring-[var(--n-accent)]/20";
   return (
-    <div className="mx-auto flex w-full max-w-[320px] flex-col justify-center space-y-4">
-      <div className="flex flex-col space-y-1 text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-[var(--n-text)]">
-          {mode === "login" ? "Entrar na sua conta" : "Criar uma conta"}
-        </h1>
-        <p className="text-xs text-[var(--n-text-muted)]">
-          Escolha uma das opções para continuar
-        </p>
-      </div>
-
-      {errorMsg && (
-        <div className="rounded-md bg-red-500/10 p-2.5 text-center text-xs text-red-500">
-          {errorMsg}
-        </div>
-      )}
-
-      {/* Botão Oficial do Google */}
-      <button
-        type="button"
-        onClick={handleGoogleLogin}
-        disabled={loading}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--n-border)] bg-[var(--n-bg)] px-3 py-2 text-xs font-medium text-[var(--n-text)] transition-colors hover:bg-[var(--n-hover)] disabled:opacity-50"
-      >
-        <svg className="h-4 w-4" viewBox="0 0 24 24">
-          <path
-            fill="#4285F4"
-            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-          />
-          <path
-            fill="#34A853"
-            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-          />
-          <path
-            fill="#FBBC05"
-            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-          />
-          <path
-            fill="#EA4335"
-            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-          />
-        </svg>
-        Continuar com o Google
-      </button>
-
-      <div className="relative my-2">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-[var(--n-border)]" />
-        </div>
-        <div className="relative flex justify-center text-[10px] uppercase">
-          <span className="bg-[var(--n-bg)] px-2 text-[var(--n-text-faint)]">
-            ou
-          </span>
-        </div>
-      </div>
-
-      {/* Formulário com Email e Senha */}
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[var(--n-text-faint)]">
-            E-mail
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="nome@empresa.com"
-            required
-            className="w-full rounded-md border border-[var(--n-border)] bg-[var(--n-bg-sidebar)]/50 px-2.5 py-1.5 text-xs text-[var(--n-text)] outline-none focus:border-[var(--n-accent)] focus:bg-[var(--n-bg)]"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[var(--n-text-faint)]">
-            Senha
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-            className="w-full rounded-md border border-[var(--n-border)] bg-[var(--n-bg-sidebar)]/50 px-2.5 py-1.5 text-xs text-[var(--n-text)] outline-none focus:border-[var(--n-accent)] focus:bg-[var(--n-bg)]"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md bg-[var(--n-accent)] px-3 py-2 text-xs font-medium text-white hover:brightness-95 disabled:opacity-50"
-        >
-          {loading
-            ? "Carregando…"
-            : mode === "login"
-            ? "Entrar"
-            : "Criar conta"}
+    <main className="grid min-h-screen place-items-center px-4">
+      <form onSubmit={submit} className="w-full max-w-[320px] space-y-3">
+        <h1 className="mb-4 text-center text-3xl font-bold">{mode === "login" ? "Entrar" : "Criar conta"}</h1>
+        <input className={input} type="email" placeholder="E-mail" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className={input} type="password" placeholder="Senha" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+        {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+        <button disabled={loading} className="w-full rounded-md bg-[var(--n-accent)] py-2 text-sm font-medium text-white hover:brightness-95 disabled:opacity-60">
+          {loading ? "Aguarde…" : mode === "login" ? "Continuar" : "Criar conta"}
         </button>
+        {mode === "login" && (
+          <>
+            <div className="flex items-center gap-3 text-xs text-[var(--n-text-muted)]">
+              <span className="h-px flex-1 bg-[var(--n-border)]" /> ou <span className="h-px flex-1 bg-[var(--n-border)]" />
+            </div>
+            <button type="button" onClick={signInWithGoogle} disabled={loading}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--n-border)] py-2 text-sm font-medium hover:bg-[var(--n-border)]/40 disabled:opacity-60">
+              <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+              </svg>
+              Continuar com o Google
+            </button>
+          </>
+        )}
+        <p className="text-center text-sm text-[var(--n-text-muted)]">
+          {mode === "login" ? <>Não tem conta? <Link className="underline" href="/register">Cadastre-se</Link></> : <>Já tem conta? <Link className="underline" href="/login">Entrar</Link></>}
+        </p>
       </form>
-    </div>
+    </main>
   );
 }
