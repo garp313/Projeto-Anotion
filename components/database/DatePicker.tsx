@@ -24,6 +24,9 @@ const maskDate = (s: string) => {
   return [n.slice(0, 2), n.slice(2, 4), n.slice(4)].filter(Boolean).join("/");
 };
 
+/** Clicar sobre texto já selecionado desfaz a seleção depois do mouseup: selecionar antes disso não dura. */
+const selectLater = (el: HTMLInputElement) => requestAnimationFrame(() => el.select());
+
 /**
  * Data digitada como dd/mm/aaaa. Só grava ao sair do campo, com Enter ou ao fechar o menu:
  * o campo nativo entregava "0002-11-01" enquanto o ano ainda estava sendo digitado.
@@ -54,12 +57,17 @@ export function DateText({ value, onCommit, label, className = fieldClass }: {
   return (
     <span className="block min-w-0">
       <input
-        aria-label={label} aria-invalid={bad} inputMode="numeric" placeholder="dd/mm/aaaa" maxLength={10}
+        aria-label={label} aria-invalid={bad} inputMode="numeric" placeholder="dd/mm/aaaa"
         value={draft ?? toBr(value)} className={`${className} ${bad ? "border-red-500" : ""}`}
-        // Campo cheio bate no limite de 10 caracteres: selecionar tudo deixa redigitar direto.
         onFocus={(e) => e.currentTarget.select()}
-        onMouseUp={(e) => { if (draft === null || bad) e.currentTarget.select(); }}
-        onChange={(e) => { setDraft(maskDate(e.target.value)); setBad(false); }}
+        onMouseUp={(e) => { if (draft === null || bad) selectLater(e.currentTarget); }}
+        onChange={(e) => {
+          // Dígito a mais num campo cheio recomeça a data: redigitar não pode depender da seleção.
+          const typed = (e.nativeEvent as InputEvent).data;
+          const overflow = e.target.value.replace(/\D/g, "").length > 8;
+          setDraft(maskDate(overflow && typed ? typed : e.target.value));
+          setBad(false);
+        }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
@@ -89,6 +97,8 @@ export function TimeText({ value, onCommit, label }: { value: string; onCommit: 
   return (
     <input aria-label={label} inputMode="numeric" placeholder="hh:mm" maxLength={5} value={draft ?? value}
       className={`${fieldClass} w-[68px] shrink-0`}
+      onFocus={(e) => e.currentTarget.select()}
+      onMouseUp={(e) => { if (draft === null) selectLater(e.currentTarget); }}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => { flush(); setDraft(null); }}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); flush(); setDraft(null); } }} />

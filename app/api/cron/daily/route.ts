@@ -42,7 +42,7 @@ export async function GET(req: Request) {
 
       if (await ensureChannel(token, account.user_id, origin)) report.channels++;
 
-      const database = await defaultTaskDatabase(admin, account.user_id);
+      const database = await defaultTaskDatabase(admin);
       if (database) {
         const labeled = await listMessages(token, LABEL_QUERY).catch(() => []);
         for (const m of labeled) {

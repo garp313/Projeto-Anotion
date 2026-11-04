@@ -58,11 +58,9 @@ export async function createTaskFromMessage(
   return { pageId: id, created: true };
 }
 
-/** Banco de destino do rótulo "→Tarefa": o de nome Tarefas no workspace da pessoa. */
-export async function defaultTaskDatabase(client: SupabaseClient, ownerId: string) {
-  const { data: ws } = await client.from("workspaces").select("id").eq("owner_id", ownerId).limit(1).maybeSingle();
-  if (!ws) return null;
-  const { data } = await client.from("pages").select("id").eq("workspace_id", ws.id).eq("is_database", true)
+/** Banco de destino do rótulo "→Tarefa": o de nome Tarefas no workspace do time. */
+export async function defaultTaskDatabase(client: SupabaseClient) {
+  const { data } = await client.from("pages").select("id").eq("is_database", true)
     .eq("is_archived", false).eq("title", "Tarefas").limit(1).maybeSingle();
   return data?.id ?? null;
 }

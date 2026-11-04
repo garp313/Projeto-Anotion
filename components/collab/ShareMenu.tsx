@@ -7,9 +7,7 @@ import { connectGoogle, memberName, notMigrated, useMembers } from "@/lib/collab
 import { Choice, Pop, fieldClass, toolbarBtn } from "@/components/database/ui";
 
 type Role = "editor" | "viewer";
-type Scope = "page" | "workspace";
 const ROLES: { value: Role; label: string }[] = [{ value: "editor", label: "Pode editar" }, { value: "viewer", label: "Só leitura" }];
-const SCOPES: { value: Scope; label: string }[] = [{ value: "page", label: "Só esta página" }, { value: "workspace", label: "Todo o workspace" }];
 
 type Access = { key: string; userId?: string; label: string; role: Role; note: string; table: "page_shares" | "workspace_members" | "invites"; inviteId?: string };
 
@@ -19,7 +17,6 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
   const { data: members = [] } = useMembers();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("editor");
-  const [scope, setScope] = useState<Scope>("page");
   const [note, setNote] = useState<string | null>(null);
   const [needsGmail, setNeedsGmail] = useState(false);
   const nameOf = (id: string) => { const m = members.find((x) => x.id === id); return m ? memberName(m) : "Pessoa"; };
@@ -43,7 +40,7 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
   const invite = useMutation({
     mutationFn: async () => {
       const target = email.trim().toLowerCase();
-      const { data, error } = await supabase.rpc("invite_by_email", { p_workspace: workspaceId, p_page: scope === "page" ? pageId : null, p_email: target, p_role: role });
+      const { data, error } = await supabase.rpc("invite_by_email", { p_workspace: workspaceId, p_page: null, p_email: target, p_role: role });
       if (error) throw error;
       const res = await fetch("/api/notify/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invite: target }) }).catch(() => null);
       const mail = res?.ok ? (await res.json()).result : null;
@@ -74,7 +71,7 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
   const label = (r: string) => ROLES.find((x) => x.value === r)?.label ?? r;
   const people: Access[] = [
     ...(access.data?.shares ?? []).map((s) => ({ key: `s${s.user_id}`, userId: s.user_id, label: nameOf(s.user_id), role: s.role as Role, note: "Esta página", table: "page_shares" as const })),
-    ...(access.data?.team ?? []).map((s) => ({ key: `w${s.user_id}`, userId: s.user_id, label: nameOf(s.user_id), role: s.role as Role, note: "Workspace", table: "workspace_members" as const })),
+    ...(access.data?.team ?? []).map((s) => ({ key: `w${s.user_id}`, userId: s.user_id, label: nameOf(s.user_id), role: s.role as Role, note: "Time", table: "workspace_members" as const })),
     ...(access.data?.invites ?? []).map((i) => ({ key: i.id, inviteId: i.id, label: i.email, role: i.role as Role, note: "Convite pendente", table: "invites" as const })),
   ];
   const valid = /^\S+@\S+\.\S+$/.test(email.trim());
@@ -82,9 +79,9 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
   return (
     <div className="p-1">
       <form onSubmit={(e) => { e.preventDefault(); if (valid) invite.mutate(); }}>
+        <p className="mb-1 text-xs text-[var(--n-text-muted)]">Quem entra no time vê todo o workspace.</p>
         <input autoFocus type="email" aria-label="E-mail da pessoa" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail da pessoa" className={fieldClass} />
         <div className="mt-1 flex flex-wrap items-center gap-1">
-          <Choice label="Alcance" value={scope} options={SCOPES} onChange={setScope} />
           <Choice label="Papel" width={150} value={role} options={ROLES} onChange={setRole} />
           <button type="submit" disabled={!valid || invite.isPending}
             className="ml-auto flex items-center gap-1 rounded bg-[var(--n-accent)] px-2 py-1 text-xs font-medium text-white hover:brightness-95 disabled:opacity-50">
@@ -99,7 +96,7 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
         </button>
       )}
       <div className="mt-2 border-t border-[var(--n-border)] pt-1">
-        {!people.length && <p className="px-1 py-1 text-xs text-[var(--n-text-faint)]">Só você tem acesso.</p>}
+        {!people.length && <p className="px-1 py-1 text-xs text-[var(--n-text-faint)]">Ainda não há outras pessoas no time.</p>}
         {people.map((a) => (
           <div key={a.key} className="flex items-center gap-2 rounded px-1 py-1">
             <span className="min-w-0 flex-1">
@@ -116,7 +113,7 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
 
 export function ShareMenu({ pageId, workspaceId }: { pageId: string; workspaceId: string }) {
   return (
-    <Pop width={340} align="end" triggerClass={`${toolbarBtn} shrink-0`} trigger={<>Compartilhar</>}>
+    <Pop width={340} align="end" triggerClass={`${toolbarBtn} shrink-0`} trigger={<>Convidar</>}>
       <Panel pageId={pageId} workspaceId={workspaceId} />
     </Pop>
   );

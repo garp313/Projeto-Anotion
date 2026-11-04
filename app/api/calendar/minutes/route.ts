@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   if (found) return NextResponse.json({ pageId: found.page_id });
 
   const [{ data: ws }, { data: team }] = await Promise.all([
-    supabase.from("workspaces").select("id").eq("owner_id", user.id).limit(1).maybeSingle(),
+    supabase.from("workspaces").select("id").order("created_at").limit(1).maybeSingle(),
     supabase.rpc("collaborators"),
   ]);
   if (!ws) return NextResponse.json({ error: "no_workspace" }, { status: 400 });

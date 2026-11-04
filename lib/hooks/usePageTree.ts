@@ -46,12 +46,10 @@ export function usePageTree() {
   const workspace = useQuery({
     queryKey: ["workspace"],
     queryFn: async () => {
-      // Quem é membro de outro workspace enxerga mais de um: as páginas novas ficam no próprio.
-      const [{ data, error }, { data: auth }] = await Promise.all([supabase.from("workspaces").select("id,name,owner_id"), supabase.auth.getSession()]);
+      // Há um só workspace, o do time.
+      const { data, error } = await supabase.from("workspaces").select("id,name").order("created_at").limit(1).single();
       if (error) throw error;
-      const mine = data.find((w) => w.owner_id === auth.session?.user.id) ?? data[0];
-      if (!mine) throw new Error("Workspace não encontrado");
-      return mine;
+      return data;
     },
   });
 
@@ -71,9 +69,7 @@ export function usePageTree() {
       const { data, error } = await supabase
         .from("pages")
         .insert({
-          // Subpágina fica no workspace da mãe, que pode ser de quem compartilhou.
-          workspace_id: pages.data?.find((p) => p.id === parentId)?.workspace_id ?? workspace.data!.id,
-          parent_id: parentId, position: Date.now(),
+          workspace_id: workspace.data!.id, parent_id: parentId, position: Date.now(),
         })
         .select(LIST).single();
       if (error) throw error;

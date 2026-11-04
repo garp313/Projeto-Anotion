@@ -2,7 +2,7 @@
 
 1. `npm install`
 2. Crie um projeto no Supabase e rode, nesta ordem, no SQL Editor:
-   `supabase/migrations/0001_init.sql`, `0002_databases.sql` e `0003_collaboration.sql`.
+   as migrations de `supabase/migrations/`, de `0001` a `0005`.
 3. Copie `.env.example` para `.env.local` e preencha URL e anon key.
 4. (Dev) Em Authentication > Providers > Email, desative "Confirm email" para entrar logo após o cadastro.
    Com convites em uso, deixe ativado: sem confirmação, quem criar conta com o e-mail convidado recebe o acesso.
