@@ -19,6 +19,14 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
   const [role, setRole] = useState<Role>("editor");
   const [note, setNote] = useState<string | null>(null);
   const [needsGmail, setNeedsGmail] = useState(false);
+  const typed = email.trim();
+  // Baixa uma vez e filtra aqui: a busca do Gmail não acha pedaços de nome como "th".
+  const contacts = useQuery({
+    queryKey: ["gmail-contacts"],
+    enabled: typed.length > 0,
+    staleTime: 10 * 60_000,
+    queryFn: async (): Promise<{ contacts: { name: string; email: string }[]; reason?: string }> => (await fetch("/api/gmail/contacts")).json(),
+  });
   const nameOf = (id: string) => { const m = members.find((x) => x.id === id); return m ? memberName(m) : "Pessoa"; };
 
   const access = useQuery({
@@ -75,12 +83,33 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
     ...(access.data?.invites ?? []).map((i) => ({ key: i.id, inviteId: i.id, label: i.email, role: i.role as Role, note: "Convite pendente", table: "invites" as const })),
   ];
   const valid = /^\S+@\S+\.\S+$/.test(email.trim());
+  const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const taken = new Set([...members.map((m) => m.email.toLowerCase()), ...(access.data?.invites ?? []).map((i) => i.email.toLowerCase())]);
+  const suggestions = !typed ? [] : (contacts.data?.contacts ?? [])
+    .filter((c) => !taken.has(c.email) && c.email !== typed.toLowerCase() && (fold(c.name).includes(fold(typed)) || c.email.includes(fold(typed))))
+    .slice(0, 6);
 
   return (
     <div className="p-1">
       <form onSubmit={(e) => { e.preventDefault(); if (valid) invite.mutate(); }}>
         <p className="mb-1 text-xs text-[var(--n-text-muted)]">Quem entra no time vê todo o workspace.</p>
-        <input autoFocus type="email" aria-label="E-mail da pessoa" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail da pessoa" className={fieldClass} />
+        <input autoFocus type="text" inputMode="email" autoComplete="off" aria-label="E-mail da pessoa" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Nome ou e-mail" className={fieldClass} />
+        {suggestions.length > 0 && (
+          <div role="listbox" aria-label="Sugestões do Gmail" className="mt-1 rounded border border-[var(--n-border)]">
+            {suggestions.map((c) => (
+              <button key={c.email} type="button" role="option" aria-selected={false} onClick={() => setEmail(c.email)}
+                className="block w-full px-2 py-1 text-left hover:bg-[var(--n-hover)]">
+                <span title={c.name || c.email} className="block truncate text-sm">{c.name || c.email}</span>
+                {c.name && <span title={c.email} className="block truncate text-[11px] text-[var(--n-text-faint)]">{c.email}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+        {typed.length > 0 && contacts.data?.reason === "not_connected" && (
+          <button type="button" onClick={() => connectGoogle()} className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-xs text-[var(--n-accent)] hover:bg-[var(--n-hover)]">
+            <Mail size={13} /> Conectar Gmail para sugerir e-mails
+          </button>
+        )}
         <div className="mt-1 flex flex-wrap items-center gap-1">
           <Choice label="Papel" width={150} value={role} options={ROLES} onChange={setRole} />
           <button type="submit" disabled={!valid || invite.isPending}

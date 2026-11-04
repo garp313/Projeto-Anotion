@@ -56,6 +56,42 @@ export async function listMessages(token: string, q: string, max = 20): Promise<
   return full.map(summary);
 }
 
+export type Contact = { name: string; email: string };
+
+const ADDRESS = /(?:"?([^",<]*?)"?\s*)?<([^<>\s]+@[^<>\s]+)>|([^\s<>,;"]+@[^\s<>,;"]+)/g;
+const AUTOMATED = /no-?reply|do-?not-?reply|mailer-daemon|notifications?@|bounce|postmaster/i;
+const COMPANY = /@usereserva\.com$/i;
+
+/** Nome e e-mail de cabeçalhos como: "Ana Lima" <ana@x.com>, joao@y.com */
+export function parseAddresses(value: string): Contact[] {
+  return [...value.matchAll(ADDRESS)].map((m) => ({ name: (m[1] ?? "").trim(), email: (m[2] ?? m[3]).toLowerCase() }));
+}
+
+/** Quem aparece nos e-mails recentes: primeiro a empresa, depois quem aparece mais. */
+export async function recentContacts(token: string, self?: string | null): Promise<Contact[]> {
+  const { messages = [] } = await read<{ messages?: { id: string }[] }>(token, "/messages?maxResults=100&q=newer_than%3A180d");
+  const fields = "format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc";
+  const seen = new Map<string, Contact & { count: number }>();
+  // Em lotes: 100 chamadas de uma vez esbarram no limite de requisições do Gmail.
+  for (let i = 0; i < messages.length; i += 20) {
+    const batch = await Promise.all(messages.slice(i, i + 20).map((m) => read<any>(token, `/messages/${encodeURIComponent(m.id)}?${fields}`)));
+    for (const m of batch) {
+      for (const name of ["from", "to", "cc"]) {
+        for (const c of parseAddresses(header(m, name))) {
+          if (c.email === self?.toLowerCase() || AUTOMATED.test(c.email)) continue;
+          const cur = seen.get(c.email);
+          seen.set(c.email, { email: c.email, name: cur?.name || c.name, count: (cur?.count ?? 0) + 1 });
+        }
+      }
+    }
+  }
+  const rank = (c: Contact) => (COMPANY.test(c.email) ? 0 : 1);
+  return [...seen.values()]
+    .sort((a, b) => rank(a) - rank(b) || b.count - a.count)
+    .slice(0, 200)
+    .map(({ name, email }) => ({ name, email }));
+}
+
 export async function getMessage(token: string, id: string): Promise<FullMessage> {
   const m = await read<any>(token, `/messages/${encodeURIComponent(id)}?format=full`);
   const plain = findPart(m.payload ?? {}, "text/plain");
