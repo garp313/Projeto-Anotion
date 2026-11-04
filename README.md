@@ -1,10 +1,23 @@
-# Notion Clone — etapa 1
+# Notion Clone
 
 1. `npm install`
-2. Crie um projeto no Supabase, rode `supabase/migrations/0001_init.sql` no SQL Editor.
+2. Crie um projeto no Supabase e rode, nesta ordem, no SQL Editor:
+   `supabase/migrations/0001_init.sql`, `0002_databases.sql` e `0003_collaboration.sql`.
 3. Copie `.env.example` para `.env.local` e preencha URL e anon key.
 4. (Dev) Em Authentication > Providers > Email, desative "Confirm email" para entrar logo após o cadastro.
+   Com convites em uso, deixe ativado: sem confirmação, quem criar conta com o e-mail convidado recebe o acesso.
 5. `npm run dev` e abra http://localhost:3000
 
-Atalhos: `/` slash menu · `Ctrl+\` recolhe a sidebar · arraste a borda da sidebar para redimensionar.
-Pendentes: PageTree com drag-and-drop, CommandDialog (Ctrl+K), databases (Table/Board/List).
+## Google
+
+- No Supabase, ative o provedor Google e inclua `http://localhost:3000/auth/callback` em Redirect URLs.
+- No Google Cloud, autorize a URI `https://<projeto>.supabase.co/auth/v1/callback` e os escopos
+  `calendar` e `gmail.send`. Enquanto o app estiver em teste, cada pessoa precisa ser usuário de teste.
+- Opcional: `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env.local` mantêm a conexão além de 1 hora.
+
+Avisos por e-mail saem do Gmail de quem fez a ação, se essa pessoa tiver conectado o Google.
+Prazos e lembretes aparecem só no Inbox.
+
+## Atalhos
+
+`/` comandos · `@` pessoa, página ou data · `Ctrl+K` busca · `Ctrl+\` recolhe a barra lateral

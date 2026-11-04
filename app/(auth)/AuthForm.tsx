@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+export const RESTRICTED = "Este app é restrito ao time. Peça um convite ao administrador.";
+
 export function AuthForm({ mode, initialError = null }: { mode: "login" | "register"; initialError?: string | null }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -29,7 +31,7 @@ export function AuthForm({ mode, initialError = null }: { mode: "login" | "regis
       ? await supabase.auth.signInWithPassword({ email, password })
       : await supabase.auth.signUp({ email, password });
     setLoading(false);
-    if (error) return setError(error.message);
+    if (error) return setError(/database error/i.test(error.message) ? RESTRICTED : error.message);
     router.push("/workspace"); router.refresh();
   }
 

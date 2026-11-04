@@ -26,7 +26,14 @@ export type ColumnSchema = {
   idPrefix?: string;
 };
 
-export type DateValue = { start: string; end?: string | null; time?: boolean };
+export type Repeat = "daily" | "weekly" | "monthly";
+export type DateValue = {
+  start: string; end?: string | null; time?: boolean;
+  /** Dias de antecedência do lembrete no Inbox (0 = no dia). */
+  remind?: number | null;
+  /** Ao concluir, cria a próxima ocorrência. */
+  repeat?: Repeat | null;
+};
 export type PersonValue = { id?: string; name: string };
 export type FileValue = { name: string; path?: string; url?: string };
 export type ChecklistItem = { id: string; text: string; done: boolean };
@@ -35,7 +42,8 @@ export type ViewType = "table" | "board" | "list" | "gallery" | "calendar" | "ti
 
 export type FilterOp =
   | "contains" | "not_contains" | "is" | "is_not" | "starts_with" | "ends_with"
-  | "empty" | "not_empty" | "gt" | "lt" | "gte" | "lte" | "before" | "after" | "checked" | "unchecked";
+  | "empty" | "not_empty" | "gt" | "lt" | "gte" | "lte" | "before" | "after" | "checked" | "unchecked"
+  | "today" | "this_week" | "next_7" | "this_month" | "overdue" | "is_me";
 export type Filter = { id: string; prop: string; op: FilterOp; value?: any };
 export type Sort = { prop: string; dir: "asc" | "desc" };
 

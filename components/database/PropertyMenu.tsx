@@ -1,15 +1,12 @@
 "use client";
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Copy, EyeOff, Trash2, X } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
-import { fetchPage, usePageTree, type PageFull } from "@/lib/hooks/usePageTree";
-import { schemaOf } from "./useDatabase";
+import { usePageTree } from "@/lib/hooks/usePageTree";
 import type { ColumnSchema, DatabaseViewConfig, NumberFormat, PropType, RollupFn, SelectOption, StatusGroup } from "./types";
 import { COLORS, DEFAULT_STATUS_OPTIONS, PROP_LABEL, newId } from "./types";
 import { evalFormula } from "./formula";
 import type { Db } from "./useDatabase";
-import { PropIcon, fieldClass, menuItem } from "./ui";
+import { Choice, PropIcon, fieldClass, menuItem } from "./ui";
 
 export const ADDABLE_TYPES = (Object.keys(PROP_LABEL) as PropType[]).filter((t) => t !== "title");
 
@@ -90,21 +87,11 @@ function FormulaEditor({ col, db, onChange }: { col: ColumnSchema; db: Db; onCha
 }
 
 /** Liga ou desliga a propriedade espelho no banco de destino. */
-function TwoWayToggle({ col, db, save }: { col: ColumnSchema; db: Db; save: (c: ColumnSchema) => void }) {
-  const qc = useQueryClient();
+function TwoWayToggle({ col, db }: { col: ColumnSchema; db: Db }) {
   const [busy, setBusy] = useState(false);
   async function toggle(on: boolean) {
-    const targetId = col.relationDatabaseId!;
     setBusy(true);
-    const target = await fetchPage(targetId);
-    const schema = schemaOf(target);
-    const mirror: ColumnSchema = { id: newId("p_"), name: db.page?.title || "Relação", type: "relation", relationDatabaseId: db.id, relationSyncProp: col.id };
-    const next = on ? [...schema, mirror] : schema.filter((c) => c.id !== col.relationSyncProp);
-    const { error } = await createClient().from("pages").update({ database_schema: next }).eq("id", targetId);
-    setBusy(false);
-    if (error) return;
-    qc.setQueryData<PageFull>(["page", targetId], (old) => (old ? { ...old, database_schema: next } : old));
-    save({ ...col, relationSyncProp: on ? mirror.id : undefined });
+    try { await (on ? db.linkRelation(col, col.relationDatabaseId) : db.unlinkMirror(col)); } finally { setBusy(false); }
   }
   return (
     <label className={menuItem}>
@@ -144,12 +131,11 @@ function ConfigFor({ col, db, save }: { col: ColumnSchema; db: Db; save: (c: Col
       return (
         <div className="p-1">
           <label className="block"><span className={label}>Relacionar com</span>
-            <select className={select} value={col.relationDatabaseId ?? ""} onChange={(e) => save({ ...col, relationDatabaseId: e.target.value || undefined })}>
-              <option value="">Escolha um banco…</option>
-              {dbs.map((p) => <option key={p.id} value={p.id}>{p.title || "Sem título"}</option>)}
-            </select>
+            <Choice label="Relacionar com" width={240} value={col.relationDatabaseId ?? ""}
+              options={dbs.map((p) => ({ value: p.id, label: p.title || "Sem título" }))}
+              onChange={(id) => void db.linkRelation(col, id)} />
           </label>
-          {col.relationDatabaseId && <TwoWayToggle col={col} db={db} save={save} />}
+          {col.relationDatabaseId && <TwoWayToggle col={col} db={db} />}
         </div>
       );
     }
@@ -193,6 +179,12 @@ export function PropertyMenu({ col, db, view, onClose }: { col: ColumnSchema; db
     onClose();
   };
   const isTitle = col.type === "title";
+  // Trocar o tipo de um lado da relação quebrava o outro: foi assim que o status dos projetos se perdeu.
+  const locked = col.type === "relation" && Boolean(col.relationSyncProp);
+  const changeType = (type: PropType) => {
+    const { relationDatabaseId: _a, relationSyncProp: _b, ...rest } = col;
+    save({ ...rest, type, ...columnDefaults(type, col) });
+  };
   return (
     <div>
       <div className="p-1">
@@ -203,10 +195,9 @@ export function PropertyMenu({ col, db, view, onClose }: { col: ColumnSchema; db
       {!isTitle && (
         <label className="block p-1">
           <span className="mb-1 flex items-center gap-1 text-[11px] text-[var(--n-text-faint)]"><PropIcon type={col.type} size={12} /> Tipo</span>
-          <select value={col.type} className="w-full rounded border border-[var(--n-border)] bg-[var(--n-bg)] px-2 py-1 text-sm outline-none"
-            onChange={(e) => { const type = e.target.value as PropType; save({ ...col, type, ...columnDefaults(type, col) }); }}>
-            {ADDABLE_TYPES.map((t) => <option key={t} value={t}>{PROP_LABEL[t]}</option>)}
-          </select>
+          {locked
+            ? <span className="block px-1 text-xs text-[var(--n-text-muted)]">Relação ligada a outro banco. Para trocar o tipo, primeiro desmarque “Mostrar no banco relacionado”.</span>
+            : <Choice label="Tipo" width={230} value={col.type} options={ADDABLE_TYPES.map((t) => ({ value: t, label: PROP_LABEL[t] }))} onChange={changeType} />}
         </label>
       )}
       <ConfigFor col={col} db={db} save={save} />
@@ -221,7 +212,7 @@ export function PropertyMenu({ col, db, view, onClose }: { col: ColumnSchema; db
           <button type="button" className={menuItem} onClick={() => { db.addColumn({ ...col, name: `${col.name} (cópia)` }); onClose(); }}>
             <Copy size={14} /> Duplicar propriedade
           </button>
-          <button type="button" className={`${menuItem} text-red-500`} onClick={() => { void db.saveSchema(db.schema.filter((c) => c.id !== col.id)); onClose(); }}>
+          <button type="button" className={`${menuItem} text-red-500`} onClick={() => { void db.removeColumn(col); onClose(); }}>
             <Trash2 size={14} /> Excluir propriedade
           </button>
         </>
@@ -241,6 +232,13 @@ export function AddPropertyMenu({ db, onDone }: { db: Db; onDone: () => void }) 
           <PropIcon type={t} /> {PROP_LABEL[t]}
         </button>
       ))}
+      <p className="px-2 pb-1 pt-2 text-[11px] text-[var(--n-text-faint)]">Para demandas</p>
+      <button type="button" className={menuItem} onClick={() => { void db.addSelfRelation("Bloqueado por", "Bloqueia"); onDone(); }}>
+        <PropIcon type="relation" /> Dependência (Bloqueado por)
+      </button>
+      <button type="button" className={menuItem} onClick={() => { void db.addSelfRelation("Subitens", "Item pai"); onDone(); }}>
+        <PropIcon type="relation" /> Subitens (tarefas reais)
+      </button>
     </div>
   );
 }

@@ -46,9 +46,12 @@ export function usePageTree() {
   const workspace = useQuery({
     queryKey: ["workspace"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("workspaces").select("id,name").limit(1).single();
+      // Quem é membro de outro workspace enxerga mais de um: as páginas novas ficam no próprio.
+      const [{ data, error }, { data: auth }] = await Promise.all([supabase.from("workspaces").select("id,name,owner_id"), supabase.auth.getSession()]);
       if (error) throw error;
-      return data;
+      const mine = data.find((w) => w.owner_id === auth.session?.user.id) ?? data[0];
+      if (!mine) throw new Error("Workspace não encontrado");
+      return mine;
     },
   });
 
@@ -67,7 +70,11 @@ export function usePageTree() {
     mutationFn: async (parentId: string | null = null) => {
       const { data, error } = await supabase
         .from("pages")
-        .insert({ workspace_id: workspace.data!.id, parent_id: parentId, position: Date.now() })
+        .insert({
+          // Subpágina fica no workspace da mãe, que pode ser de quem compartilhou.
+          workspace_id: pages.data?.find((p) => p.id === parentId)?.workspace_id ?? workspace.data!.id,
+          parent_id: parentId, position: Date.now(),
+        })
         .select(LIST).single();
       if (error) throw error;
       return data as PageRow;
@@ -95,10 +102,37 @@ export function usePageTree() {
 
   const archivePage = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("pages").update({ is_archived: true }).eq("id", id);
+      // A subárvore vai junto; senão os filhos subiriam para a raiz da barra lateral.
+      const ids = new Set([id]);
+      const list = qc.getQueryData<PageRow[]>(["pages"]) ?? [];
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const p of list) if (p.parent_id && ids.has(p.parent_id) && !ids.has(p.id)) { ids.add(p.id); grew = true; }
+      }
+      const { error } = await supabase.from("pages").update({ is_archived: true }).in("id", [...ids]);
       if (error) throw error;
+      return ids;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pages"] }); router.push("/workspace"); },
+    onSuccess: (ids) => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      qc.invalidateQueries({ queryKey: ["trash"] });
+      qc.invalidateQueries({ queryKey: ["database_rows"] });
+      if (ids.has(window.location.pathname.split("/").pop() ?? "")) router.push("/workspace");
+    },
+  });
+
+  const duplicatePage = useMutation({
+    mutationFn: async (id: string) => {
+      const p = await fetchPage(id);
+      const { data, error } = await supabase.from("pages").insert({
+        workspace_id: p.workspace_id, parent_id: p.parent_id, title: p.title ? `${p.title} (cópia)` : "", icon: p.icon, cover: p.cover,
+        content_json: p.content_json, is_database: p.is_database, database_schema: p.database_schema ?? [], row_properties: p.row_properties ?? {},
+        position: p.position + 0.5,
+      }).select(LIST).single();
+      if (error) throw error;
+      return data as PageRow;
+    },
+    onSuccess: (p) => { qc.invalidateQueries({ queryKey: ["pages"] }); router.push(`/workspace/${p.id}`); },
   });
 
   const movePage = useMutation({
@@ -120,5 +154,5 @@ export function usePageTree() {
     },
   });
 
-  return { workspace, pages, tree, createPage, updatePage, archivePage, movePage };
+  return { workspace, pages, tree, createPage, updatePage, archivePage, duplicatePage, movePage };
 }

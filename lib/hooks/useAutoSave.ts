@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { scheduleEmails } from "@/lib/collab";
 
 export type SaveStatus = "saved" | "saving" | "error";
 
@@ -20,6 +21,7 @@ export function useAutoSave(pageId: string, delay = 800) {
     qc.setQueryData<any>(["page", pageId], (old: any) => (old ? { ...old, content_json: content } : old));
     const { error } = await supabase.from("pages").update({ content_json: content }).eq("id", pageId);
     setStatus(error ? "error" : pending.current === null ? "saved" : "saving");
+    if (!error && JSON.stringify(content).includes('"kind":"person"')) scheduleEmails();
   }, [pageId, supabase, qc]);
 
   const save = useCallback(

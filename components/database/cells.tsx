@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DatePicker } from "./DatePicker";
 import { Check, ExternalLink, FileUp, Link2, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { ChecklistItem, ColumnSchema, DatabaseRow, DateValue, FileValue, PersonValue, SelectOption, StatusGroup } from "./types";
+import type { ChecklistItem, ColumnSchema, DatabaseRow, FileValue, PersonValue, SelectOption, StatusGroup } from "./types";
 import { COLORS, READ_ONLY, newId } from "./types";
 import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue } from "./values";
 import type { Db } from "./useDatabase";
 import { OptionTag, Pop, fieldClass, menuItem } from "./ui";
 
-type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean };
+type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean };
 
-const cellBox = "block min-h-[30px] w-full px-2 py-1 text-left text-sm";
+const cellBox = "block min-h-[30px] w-full min-w-0 overflow-hidden px-2 py-1 text-left text-sm";
 const Empty = ({ compact }: { compact?: boolean }) =>
   compact ? null : <span className="text-[var(--n-text-faint)]">Vazio</span>;
 
@@ -136,51 +137,13 @@ function SelectField({ col, row, db, compact }: CellProps) {
   );
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const toLocalInput = (s: string) => {
-  const d = new Date(s);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-
 function DateField({ col, row, db, compact }: CellProps) {
   const value = asDate(rawValue(col, row, db.ctx));
-  const write = (next: DateValue | null) => db.setValue(row.id, col.id, next);
-  const today = new Date();
-  const base: DateValue = value ?? { start: `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}` };
-  const hasEnd = Boolean(value?.end);
-  const time = Boolean(value?.time);
-  const norm = (s: string) => (time ? toLocalInput(s.length === 10 ? `${s}T09:00` : s) : s.slice(0, 10));
-  const input = (key: "start" | "end", label: string) => (
-    <label className="mb-1 block px-1 text-xs text-[var(--n-text-muted)]">
-      {label}
-      <input
-        type={time ? "datetime-local" : "date"} className={`${fieldClass} mt-0.5`}
-        value={value?.[key] ? norm(value[key]!) : ""}
-        onChange={(e) => e.target.value
-          ? write({ ...base, [key]: e.target.value })
-          : key === "start" ? write(null) : write({ ...base, end: null })}
-      />
-    </label>
-  );
-  const toggleTime = () => {
-    const next = !time;
-    const conv = (s?: string | null) => (!s ? s : next ? toLocalInput(s.length === 10 ? `${s}T09:00` : s) : s.slice(0, 10));
-    write({ ...base, time: next, start: conv(base.start)!, end: conv(base.end) });
-  };
+  const [open, setOpen] = useState(false);
   return (
-    <Pop triggerClass={cellBox} trigger={value ? <span className={dueTone(col, row, db.ctx)}>{formatDateValue(value)}</span> : <Empty compact={compact} />}>
-      <div className="p-1">
-        {input("start", hasEnd ? "Início" : "Data")}
-        {hasEnd && input("end", "Fim")}
-        <label className={menuItem}>
-          <input type="checkbox" checked={hasEnd} className="accent-[var(--n-accent)]"
-            onChange={(e) => write({ ...base, end: e.target.checked ? base.start : null })} /> Data de término
-        </label>
-        <label className={menuItem}>
-          <input type="checkbox" checked={time} className="accent-[var(--n-accent)]" onChange={toggleTime} /> Incluir horário
-        </label>
-        {value && <button type="button" onClick={() => write(null)} className={menuItem}><X size={14} /> Limpar</button>}
-      </div>
+    <Pop open={open} onOpenChange={setOpen} triggerClass={cellBox} width={280}
+      trigger={value ? <span title={formatDateValue(value)} className={`block truncate ${dueTone(col, row, db.ctx)}`}>{formatDateValue(value)}</span> : <Empty compact={compact} />}>
+      <DatePicker value={value} onChange={(v) => db.setValue(row.id, col.id, v)} onDone={() => setOpen(false)} />
     </Pop>
   );
 }
@@ -188,16 +151,19 @@ function DateField({ col, row, db, compact }: CellProps) {
 function PersonField({ col, row, db, compact }: CellProps) {
   const people: PersonValue[] = rawValue(col, row, db.ctx) ?? [];
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
   const known = useMemo(() => {
     const map = new Map<string, PersonValue>();
     if (db.me) map.set(db.me.label, { id: db.me.id, name: db.me.label });
+    for (const m of db.members) { const name = m.name || m.email; if (!map.has(name)) map.set(name, { id: m.id, name }); }
     for (const r of db.rows) for (const p of Array.isArray(r.row_properties?.[col.id]) ? r.row_properties[col.id] : []) map.set(p.name, p);
     return [...map.values()];
-  }, [db.rows, db.me, col.id]);
+  }, [db.rows, db.me, db.members, col.id]);
   const has = (p: PersonValue) => people.some((x) => x.name === p.name);
   const toggle = (p: PersonValue) => {
     db.setValue(row.id, col.id, has(p) ? people.filter((x) => x.name !== p.name) : [...people, p]);
     setQ("");
+    setOpen(false);
   };
   const shown = known.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
   const avatar = (name: string) => (
@@ -205,9 +171,9 @@ function PersonField({ col, row, db, compact }: CellProps) {
   );
   return (
     <Pop
-      triggerClass={cellBox}
+      open={open} onOpenChange={setOpen} triggerClass={cellBox}
       trigger={people.length
-        ? <span className="flex flex-wrap gap-1.5">{people.map((p) => <span key={p.name} className="flex items-center gap-1">{avatar(p.name)}<span className="truncate">{p.name}</span></span>)}</span>
+        ? <span className="flex min-w-0 flex-wrap gap-1.5">{people.map((p) => <span key={p.name} title={p.name} className="flex min-w-0 max-w-full items-center gap-1">{avatar(p.name)}<span className="min-w-0 truncate">{p.name}</span></span>)}</span>
         : <Empty compact={compact} />}
     >
       <input
@@ -295,16 +261,27 @@ function RelationField({ col, row, db, compact }: CellProps) {
   const ids: string[] = rawValue(col, row, db.ctx) ?? [];
   const target = col.relationDatabaseId ? db.ctx.related[col.relationDatabaseId] : undefined;
   const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
   if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
   const label = (r: DatabaseRow) => r.title || "Sem título";
   const shown = target.rows.filter((r) => label(r).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 50);
   const chosen = target.rows.filter((r) => ids.includes(r.id));
+  const typed = q.trim();
+  const createNew = async () => {
+    setBusy(true);
+    try {
+      const id = await db.createRelated(col.relationDatabaseId!, typed);
+      db.setValue(row.id, col.id, [...ids, id]);
+      setQ("");
+    } finally { setBusy(false); }
+  };
   return (
     <Pop triggerClass={cellBox}
       trigger={chosen.length
-        ? <span className="flex flex-wrap gap-1">{chosen.map((r) => <span key={r.id} className="truncate underline decoration-[var(--n-text-faint)]">{label(r)}</span>)}</span>
+        ? <span className="flex min-w-0 flex-wrap gap-1">{chosen.map((r) => <span key={r.id} title={label(r)} className="min-w-0 max-w-full truncate underline decoration-[var(--n-text-faint)]">{label(r)}</span>)}</span>
         : <Empty compact={compact} />}>
-      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar página…" className={`${fieldClass} mb-1`} />
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ou criar…" className={`${fieldClass} mb-1`}
+        onKeyDown={(e) => { if (e.key === "Enter" && typed && !shown.length) { e.preventDefault(); void createNew(); } }} />
       {shown.map((r) => (
         <button key={r.id} type="button" className={menuItem}
           onClick={() => db.setValue(row.id, col.id, ids.includes(r.id) ? ids.filter((x) => x !== r.id) : [...ids, r.id])}>
@@ -312,7 +289,10 @@ function RelationField({ col, row, db, compact }: CellProps) {
           {ids.includes(r.id) && <Check size={14} className="ml-auto" />}
         </button>
       ))}
-      {!shown.length && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Nenhuma página encontrada.</p>}
+      {!shown.length && !typed && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Nenhuma página encontrada.</p>}
+      <button type="button" disabled={busy || !typed} onClick={createNew} className={`${menuItem} disabled:opacity-60`}>
+        <Plus size={14} /> {typed ? <span className="truncate">Criar “{typed}”</span> : <span>Digite um nome para criar novo</span>}
+      </button>
     </Pop>
   );
 }
@@ -359,12 +339,12 @@ function ChecklistField({ col, row, db, compact }: CellProps) {
   );
 }
 
-function TitleField({ col, row, db }: CellProps) {
+function TitleField({ col, row, db, autoFocus }: CellProps) {
   const [draft, setDraft] = useState(row.title);
   useEffect(() => setDraft(row.title), [row.title]);
   return (
     <input
-      value={draft} placeholder="Sem título" aria-label={col.name}
+      value={draft} placeholder="Sem título" aria-label={col.name} title={draft || undefined} autoFocus={autoFocus}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== row.title && db.setValue(row.id, col.id, draft)}
       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}

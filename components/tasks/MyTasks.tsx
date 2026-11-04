@@ -6,7 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ListChecks } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { usePageTree } from "@/lib/hooks/usePageTree";
-import { completeTask, createTaskTemplate, loadTasks, type Task } from "@/lib/tasks";
+import { completeTask, createTaskTemplate, loadTasks, setTaskStatus, type Task } from "@/lib/tasks";
+import { OptionTag, Pop, menuItem } from "@/components/database/ui";
 import { formatDateValue } from "@/components/database/values";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -38,6 +39,19 @@ function bucketize(tasks: Task[]): Bucket[] {
   return buckets.filter((b) => b.tasks.length);
 }
 
+function StatusPicker({ task, onPick }: { task: Task; onPick: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  if (!task.statusOptions.length) return null;
+  return (
+    <Pop open={open} onOpenChange={setOpen} width={190} align="end" triggerClass="shrink-0 rounded hover:brightness-95"
+      trigger={<span aria-label={`Status de ${task.title || "tarefa"}`}>{task.statusOption ? <OptionTag option={task.statusOption} /> : <span className="text-xs text-[var(--n-text-faint)]">Sem status</span>}</span>}>
+      {task.statusOptions.map((o) => (
+        <button key={o.id} type="button" className={menuItem} onClick={() => { setOpen(false); onPick(o.id); }}><OptionTag option={o} /></button>
+      ))}
+    </Pop>
+  );
+}
+
 export function MyTasks() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -51,13 +65,20 @@ export function MyTasks() {
     });
   }, []);
 
-  const { data, isLoading, error } = useQuery({ queryKey: ["tasks"], queryFn: loadTasks });
+  const { data, isLoading, error } = useQuery({ queryKey: ["tasks"], queryFn: () => loadTasks() });
 
   const complete = useMutation({
     mutationFn: completeTask,
     onSuccess: (_r, t) => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["database_rows", t.databaseId] });
+    },
+  });
+  const changeStatus = useMutation({
+    mutationFn: ({ task, id }: { task: Task; id: string }) => setTaskStatus(task, id),
+    onSuccess: (_r, { task }) => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["database_rows", task.databaseId] });
     },
   });
   const template = useMutation({
@@ -104,7 +125,9 @@ export function MyTasks() {
                   </button>
                 )}
                 <Link href={`/workspace/${t.id}`} className="min-w-0 flex-1 truncate text-sm">{t.icon} {t.title || "Sem título"}</Link>
-                <span className="shrink-0 truncate text-xs text-[var(--n-text-faint)]">{t.databaseTitle}</span>
+                <span className="hidden max-w-[120px] shrink-0 truncate text-xs text-[var(--n-text-faint)] sm:inline" title={t.databaseTitle}>{t.databaseTitle}</span>
+                {t.priority && <OptionTag option={t.priority} />}
+                <StatusPicker task={t} onPick={(id) => changeStatus.mutate({ task: t, id })} />
                 {t.due && <span className={`shrink-0 text-xs ${b.tone ?? "text-[var(--n-text-muted)]"}`}>{formatDateValue(t.due)}</span>}
               </div>
             ))}

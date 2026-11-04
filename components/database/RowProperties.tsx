@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarPlus, Check, Plus } from "lucide-react";
+import { CalendarPlus, Check, Clock, Plus } from "lucide-react";
 import { useDatabase } from "./useDatabase";
 import { PropertyValue } from "./cells";
 import { AddPropertyMenu } from "./PropertyMenu";
-import { Pop, PropIcon } from "./ui";
+import { Choice, Pop, PropIcon, toolbarBtn } from "./ui";
+import { DateText, TimeText, isoDay } from "./DatePicker";
 import { asDate, rawValue } from "./values";
 import type { ColumnSchema, DatabaseRow } from "./types";
 import type { Db } from "./useDatabase";
@@ -38,6 +39,69 @@ function AddToCalendar({ col, row, db }: { col: ColumnSchema; row: DatabaseRow; 
   );
 }
 
+const DURATIONS = [{ value: "30", label: "30 minutos" }, { value: "60", label: "1 hora" }, { value: "120", label: "2 horas" }, { value: "240", label: "4 horas" }];
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const localStamp = (d: Date) => `${isoDay(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:00`;
+
+/** Bloco de foco: reserva tempo na agenda de quem clicou e convida os responsáveis. */
+function FocusBlock({ row, db }: { row: DatabaseRow; db: Db }) {
+  const [open, setOpen] = useState(false);
+  const [day, setDay] = useState(() => isoDay(new Date()));
+  const [hour, setHour] = useState("09:00");
+  const [minutes, setMinutes] = useState("60");
+  const [state, setState] = useState<"idle" | "busy" | "done" | "connect" | "error">("idle");
+  const [busyPeople, setBusyPeople] = useState<string[] | null>(null);
+
+  const people = db.schema.filter((c) => c.type === "person")
+    .flatMap((c) => (Array.isArray(row.row_properties?.[c.id]) ? row.row_properties[c.id] : []) as { id?: string; name: string }[])
+    .filter((p) => p.id && p.id !== db.me?.id);
+  const start = new Date(`${day}T${hour}:00`);
+  const end = new Date(start.getTime() + Number(minutes) * 60_000);
+
+  async function check() {
+    const list = await Promise.all(people.map(async (p) => {
+      const qs = new URLSearchParams({ userId: p.id!, start: start.toISOString(), end: end.toISOString() });
+      const res = await fetch(`/api/google/freebusy?${qs}`).then((r) => r.json()).catch(() => null);
+      return res?.available && res.busy.length ? p.name : null;
+    }));
+    setBusyPeople(list.filter((n): n is string => n !== null));
+  }
+  async function book() {
+    setState("busy");
+    const attendees = people.map((p) => db.members.find((m) => m.id === p.id)?.email).filter(Boolean);
+    const res = await fetch("/api/calendar/events", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        summary: `Foco: ${row.title || "Sem título"}`, allDay: false, attendees,
+        start: localStamp(start), end: localStamp(end), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    });
+    setState(res.status === 401 ? "connect" : res.ok ? "done" : "error");
+    if (res.ok) setOpen(false);
+  }
+  return (
+    <Pop open={open} onOpenChange={(o) => { setOpen(o); if (o) { setState("idle"); setBusyPeople(null); } }} width={260} align="end" triggerClass={`${toolbarBtn} h-[30px] shrink-0`}
+      trigger={<><Clock size={13} /> {state === "done" ? "Agendado" : "Agendar"}</>}>
+      <div className="space-y-1 p-1">
+        <p className="text-[11px] text-[var(--n-text-faint)]">Bloquear tempo na agenda</p>
+        <div className="flex items-center gap-1">
+          <span className="min-w-0 flex-1"><DateText label="Dia do bloco" value={day} onCommit={(v) => { if (v) { setDay(v); setBusyPeople(null); } }} /></span>
+          <TimeText label="Hora do bloco" value={hour} onCommit={(t) => { setHour(t); setBusyPeople(null); }} />
+        </div>
+        <Choice label="Duração" value={minutes} options={DURATIONS} onChange={(m) => { setMinutes(m); setBusyPeople(null); }} />
+        {people.length > 0 && (
+          <button type="button" onClick={() => void check()} className="block text-xs text-[var(--n-accent)] underline">Ver disponibilidade do responsável</button>
+        )}
+        {busyPeople && <p role="status" className="text-xs text-[var(--n-text-muted)]">{busyPeople.length ? `Ocupado neste horário: ${busyPeople.join(", ")}` : "Sem conflito encontrado. Quem não conectou o Google não aparece aqui."}</p>}
+        {state === "connect" && <Link href="/agenda" className="block text-xs underline">Conectar agenda</Link>}
+        {state === "error" && <p role="alert" className="text-xs text-red-500">Não foi possível agendar.</p>}
+        <button type="button" disabled={state === "busy"} onClick={() => void book()}
+          className="w-full rounded bg-[var(--n-accent)] py-1 text-xs font-medium text-white hover:brightness-95 disabled:opacity-60">{state === "busy" ? "Agendando…" : "Agendar bloco"}</button>
+      </div>
+    </Pop>
+  );
+}
+
 function toEventTimes(v: { start: string; end?: string | null; time?: boolean }) {
   if (v.time) {
     const start = new Date(v.start);
@@ -61,7 +125,8 @@ export function RowProperties({ databaseId, rowId }: { databaseId: string; rowId
             <PropIcon type={c.type} /> <span className="truncate">{c.name}</span>
           </span>
           <div className="min-w-0 flex-1"><PropertyValue col={c} row={row} db={db} /></div>
-          {c.type === "date" && <AddToCalendar col={c} row={row} db={db} />}
+          {c.type === "date" && db.page?.row_properties?.__calendarSync !== c.id && <AddToCalendar col={c} row={row} db={db} />}
+          {c.type === "date" && <FocusBlock row={row} db={db} />}
         </div>
       ))}
       <Pop open={adding} onOpenChange={setAdding} width={230}

@@ -5,3 +5,4 @@ node_modules
 next-env.d.ts
 anotion
 supabase/.temp/
+.vscode/

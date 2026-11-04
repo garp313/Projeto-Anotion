@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { accessTokenFor } from "./tokens";
 
 export const ACCESS_COOKIE = "g_at";
 export const REFRESH_COOKIE = "g_rt";
@@ -20,10 +22,18 @@ export async function clearGoogleTokens() {
   store.delete(REFRESH_COOKIE);
 }
 
-async function accessToken(): Promise<string | null> {
+export async function accessToken(): Promise<string | null> {
   const store = await cookies();
   const current = store.get(ACCESS_COOKIE)?.value;
   if (current) return current;
+
+  // Conta guardada no servidor vale em qualquer aparelho; o cookie é só o cache de 1 hora.
+  const { data: { user } } = await (await createClient()).auth.getUser();
+  const stored = user ? await accessTokenFor(user.id) : null;
+  if (stored) {
+    await storeGoogleTokens(stored, null, 3000);
+    return stored;
+  }
 
   const refresh = store.get(REFRESH_COOKIE)?.value;
   const { GOOGLE_CLIENT_ID: id, GOOGLE_CLIENT_SECRET: secret } = process.env;

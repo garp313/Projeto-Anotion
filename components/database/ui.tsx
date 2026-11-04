@@ -18,8 +18,13 @@ export function Pop({
       <P.Trigger className={triggerClass}>{trigger}</P.Trigger>
       <P.Portal>
         <P.Content
-          align={align} sideOffset={4} collisionPadding={12} style={{ width }}
-          className="n-scroll z-[70] max-h-[70vh] overflow-y-auto rounded-lg border border-[var(--n-border)] bg-[var(--n-bg)] p-1 text-sm text-[var(--n-text)] shadow-xl"
+          align={align} sideOffset={4} collisionPadding={12}
+          style={{ width, maxWidth: "calc(100vw - 24px)", maxHeight: "min(70vh, var(--radix-popover-content-available-height))" }}
+          // Um seletor aberto dentro de outro menu vive em outro portal: mexer nele não é "clicar fora".
+          onInteractOutside={(e) => {
+            if ((e.target as Element | null)?.closest?.("[data-radix-popper-content-wrapper]")) e.preventDefault();
+          }}
+          className="n-scroll z-[70] overflow-y-auto rounded-lg border border-[var(--n-border)] bg-[var(--n-bg)] p-1 text-sm text-[var(--n-text)] shadow-xl"
         >
           {children}
         </P.Content>
@@ -36,7 +41,7 @@ export const toolbarBtn =
   "flex items-center gap-1 rounded px-1.5 py-1 text-xs text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]";
 
 export const OptionTag = ({ option }: { option: Pick<SelectOption, "value" | "color"> }) => (
-  <span className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-xs font-medium leading-4 ${option.color}`}>
+  <span title={option.value} className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-xs font-medium leading-4 ${option.color}`}>
     {option.value}
   </span>
 );

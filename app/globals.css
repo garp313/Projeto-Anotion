@@ -59,3 +59,9 @@ body {
 
 .n-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .n-scroll:hover { scrollbar-color: var(--n-active) transparent; }
+
+/* "Exportar PDF": só o conteúdo da página. */
+@media print {
+  aside { display: none !important; }
+  html, body, main { height: auto !important; overflow: visible !important; }
+}

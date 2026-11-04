@@ -8,6 +8,8 @@ export type Ctx = {
   schema: ColumnSchema[];
   related: Record<string, RelatedDb>;
   userLabel: (id?: string | null) => string;
+  /** Pessoa logada, para filtros como "Responsável = Eu". */
+  me?: { id: string; label: string } | null;
 };
 
 export const asDate = (v: any): DateValue | null =>
@@ -174,9 +176,11 @@ export function opsFor(type: PropType): FilterOp[] {
   switch (type) {
     case "number": case "unique_id": return ["is", "is_not", "gt", "lt", "gte", "lte", "empty", "not_empty"];
     case "checkbox": return ["checked", "unchecked"];
-    case "date": case "created_time": case "last_edited_time": return ["is", "before", "after", "empty", "not_empty"];
+    case "date": return ["today", "this_week", "next_7", "this_month", "overdue", "is", "before", "after", "empty", "not_empty"];
+    case "created_time": case "last_edited_time": return ["today", "this_week", "this_month", "is", "before", "after", "empty", "not_empty"];
     case "select": case "status": return ["is", "is_not", "empty", "not_empty"];
-    case "multi_select": case "person": case "relation": case "files": case "checklist": return ["contains", "not_contains", "empty", "not_empty"];
+    case "person": return ["is_me", "contains", "not_contains", "empty", "not_empty"];
+    case "multi_select": case "relation": case "files": case "checklist": return ["contains", "not_contains", "empty", "not_empty"];
     default: return ["contains", "not_contains", "is", "is_not", "starts_with", "ends_with", "empty", "not_empty"];
   }
 }
@@ -184,14 +188,43 @@ export const OP_LABEL: Record<FilterOp, string> = {
   contains: "Contém", not_contains: "Não contém", is: "É", is_not: "Não é", starts_with: "Começa com",
   ends_with: "Termina com", empty: "Está vazio", not_empty: "Não está vazio", gt: ">", lt: "<", gte: "≥", lte: "≤",
   before: "Antes de", after: "Depois de", checked: "Marcada", unchecked: "Desmarcada",
+  today: "Hoje", this_week: "Esta semana", next_7: "Próximos 7 dias", this_month: "Este mês", overdue: "Atrasada", is_me: "Sou eu",
 };
-export const opNeedsValue = (op: FilterOp) => !["empty", "not_empty", "checked", "unchecked"].includes(op);
+const NO_VALUE: FilterOp[] = ["empty", "not_empty", "checked", "unchecked", "today", "this_week", "next_7", "this_month", "overdue", "is_me"];
+export const opNeedsValue = (op: FilterOp) => !NO_VALUE.includes(op);
 
 const dayKey = (v: any) => {
   const d = asDate(v);
   return d ? d.start.slice(0, 10) : "";
 };
 const DATE_TYPES: PropType[] = ["date", "created_time", "last_edited_time"];
+
+const dayIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const localDay = (s: string) => (s.length <= 10 ? s : dayIso(new Date(s)));
+
+/** A linha está num status do grupo Concluído? */
+export function isDone(row: DatabaseRow, schema: ColumnSchema[]) {
+  const status = schema.find((c) => c.type === "status");
+  return status?.options?.find((o) => o.id === row.row_properties?.[status.id])?.group === "complete";
+}
+
+function matchesRelative(op: FilterOp, v: any, row: DatabaseRow, ctx: Ctx) {
+  const d = asDate(v);
+  if (!d) return false;
+  const start = localDay(d.start), end = localDay(d.end ?? d.start);
+  const now = new Date();
+  const at = (n: number) => dayIso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
+  const today = at(0);
+  const overlaps = (a: string, b: string) => start <= b && end >= a;
+  switch (op) {
+    case "today": return overlaps(today, today);
+    case "this_week": return overlaps(at(-now.getDay()), at(6 - now.getDay()));
+    case "next_7": return overlaps(today, at(7));
+    case "this_month": return overlaps(dayIso(new Date(now.getFullYear(), now.getMonth(), 1)), dayIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+    case "overdue": return end < today && !isDone(row, ctx.schema);
+    default: return true;
+  }
+}
 
 function matches(f: Filter, row: DatabaseRow, ctx: Ctx): boolean {
   const col = ctx.schema.find((s) => s.id === f.prop);
@@ -201,6 +234,8 @@ function matches(f: Filter, row: DatabaseRow, ctx: Ctx): boolean {
   if (f.op === "unchecked") return !v;
   if (f.op === "empty") return isBlank(v);
   if (f.op === "not_empty") return !isBlank(v);
+  if (f.op === "is_me") return Array.isArray(v) && v.some((p) => p.id === ctx.me?.id || p.name === ctx.me?.label);
+  if (["today", "this_week", "next_7", "this_month", "overdue"].includes(f.op)) return matchesRelative(f.op, v, row, ctx);
   if (f.value === undefined || f.value === "" || f.value === null) return true; // filtro ainda sem valor
   if (DATE_TYPES.includes(col.type)) {
     const a = dayKey(v), b = String(f.value);
@@ -283,7 +318,7 @@ export function visibleProps(schema: ColumnSchema[], view: DatabaseViewConfig): 
     .sort((a, b) => (a.type === "title" ? -1 : b.type === "title" ? 1 : rank(a) - rank(b)));
 }
 
-export type Group = { id: string; label: string; color?: string; rows: DatabaseRow[] };
+export type Group = { id: string; label: string; color?: string; rows: DatabaseRow[]; value?: any };
 
 export function groupRows(rows: DatabaseRow[], col: ColumnSchema | undefined, ctx: Ctx): Group[] {
   if (!col) return [{ id: "__all", label: "", rows }];
@@ -300,6 +335,18 @@ export function groupRows(rows: DatabaseRow[], col: ColumnSchema | undefined, ct
     return [none, ...gs];
   }
   const map = new Map<string, Group>();
+  // Com dois responsáveis, a linha aparece no grupo de cada um.
+  if (col.type === "person") {
+    for (const r of rows) {
+      const people: any[] = rawValue(col, r, ctx);
+      if (!people.length) none.rows.push(r);
+      for (const p of people) {
+        if (!map.has(p.name)) map.set(p.name, { id: p.name, label: p.name, rows: [], value: p });
+        map.get(p.name)!.rows.push(r);
+      }
+    }
+    return [none, ...map.values()];
+  }
   for (const r of rows) {
     const label = displayText(col, rawValue(col, r, ctx), ctx);
     if (!label) { none.rows.push(r); continue; }

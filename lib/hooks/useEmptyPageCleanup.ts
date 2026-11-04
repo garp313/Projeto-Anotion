@@ -15,7 +15,7 @@ const isBlankValue = (v: unknown) =>
 
 const isBlankBlock = (b: any): boolean =>
   b?.type === "paragraph" &&
-  !(Array.isArray(b.content) ? b.content : []).some((c: any) => c?.text?.trim() || c?.type === "link") &&
+  !(Array.isArray(b.content) ? b.content : []).some((c: any) => c?.text?.trim() || (c?.type && c.type !== "text")) &&
   (b.children ?? []).every(isBlankBlock);
 
 type Candidate = { id: string; parent_id: string | null; created_at: string; icon: string | null; cover: string | null; content_json: any[] | null; row_properties: Record<string, unknown> | null };

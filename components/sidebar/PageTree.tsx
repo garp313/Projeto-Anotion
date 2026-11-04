@@ -6,12 +6,10 @@ import { PageItem } from "./PageItem";
 export function PageTree({
   tree,
   onCreate,
-  onArchive,
   onMove,
 }: {
   tree: TreeNode[];
   onCreate: (parentId: string) => void;
-  onArchive: (id: string) => void;
   onMove: (draggedId: string, parentId: string | null, position: number) => void;
 }) {
   const [rootDropOver, setRootDropOver] = useState(false);
@@ -43,7 +41,6 @@ export function PageTree({
           node={n}
           depth={0}
           onCreate={onCreate}
-          onArchive={onArchive}
           onMove={onMove}
         />
       ))}

@@ -7,23 +7,34 @@ export type PageHit = {
   kind: "page"; id: string; title: string; icon: string | null; parentTitle?: string;
   /** Textos pesquisáveis além do título: propriedades e conteúdo. */
   fields: { label: string; text: string }[];
+  /** Páginas citadas por @menção, para os backlinks. */
+  links: string[];
 };
 export type EventHit = { kind: "event"; id: string; title: string; day: string; when: string; location?: string; description?: string };
 
 /** Ignora maiúsculas e acentos: "logistica" encontra "Logística". */
 export const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-function blockText(blocks: any[]): string {
+function readBlocks(blocks: any[]) {
   const out: string[] = [];
+  const links: string[] = [];
   const walk = (list: any[]) => {
     for (const b of list ?? []) {
-      if (Array.isArray(b.content)) for (const c of b.content) if (c?.text) out.push(c.text);
+      if (Array.isArray(b.content)) {
+        for (const c of b.content) {
+          if (c?.text) out.push(c.text);
+          if (c?.type === "mention") {
+            out.push(c.props?.label ?? "");
+            if (c.props?.kind === "page") links.push(c.props.target);
+          }
+        }
+      }
       if (b.content?.rows) for (const r of b.content.rows) for (const cell of r.cells ?? []) walk([{ content: cell }]);
       if (b.children?.length) walk(b.children);
     }
   };
   walk(blocks);
-  return out.join(" ");
+  return { text: out.join(" "), links };
 }
 
 type Row = {
@@ -51,9 +62,9 @@ export async function loadPageIndex(): Promise<PageHit[]> {
         if (text) fields.push({ label: col.name, text });
       }
     }
-    const content = blockText(r.content_json ?? []);
-    if (content) fields.push({ label: "Conteúdo", text: content });
-    return { kind: "page", id: r.id, title: r.title, icon: r.icon, parentTitle: parent?.title, fields };
+    const { text, links } = readBlocks(r.content_json ?? []);
+    if (text) fields.push({ label: "Conteúdo", text });
+    return { kind: "page", id: r.id, title: r.title, icon: r.icon, parentTitle: parent?.title, fields, links };
   });
 }
 

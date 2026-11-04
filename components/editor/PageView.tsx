@@ -1,16 +1,23 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronsLeftRight, Table, Kanban, List, ListChecks } from "lucide-react";
+import { ChevronsLeftRight, Table, Kanban, List, ListChecks, MoreHorizontal, Star } from "lucide-react";
 import { fetchPage, usePageTree } from "@/lib/hooks/usePageTree";
 import type { SaveStatus } from "@/lib/hooks/useAutoSave";
 import { databasePatch, type ViewType } from "@/components/database/types";
 import { createTaskTemplate } from "@/lib/tasks";
+import { pushRecent, useFavorites } from "@/lib/hooks/useFavorites";
+import { Pop } from "@/components/database/ui";
+import { PageMenu } from "@/components/sidebar/PageMenu";
 import { PageHeader } from "./PageHeader";
 import { PageSkeleton } from "./PageSkeleton";
+import { Backlinks } from "./Backlinks";
+import { PageActivity } from "@/components/collab/PageActivity";
+import { ShareMenu } from "@/components/collab/ShareMenu";
+import { VersionsMenu } from "@/components/collab/VersionsMenu";
 
 // Editor e banco de dados são os trechos mais pesados: cada página baixa só o que usa.
 const skeleton = () => <div className="h-40 animate-pulse rounded bg-[var(--n-hover)]/40" />;
@@ -23,6 +30,10 @@ const LABEL: Record<SaveStatus, string> = { saved: "Salvo", saving: "Salvando…
 export function PageView({ pageId }: { pageId: string }) {
   const [status, setStatus] = useState<SaveStatus>("saved");
   const { updatePage, pages } = usePageTree();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [revision, setRevision] = useState(0); // recria o editor depois de restaurar uma versão
+  const { isFavorite, toggle: toggleFavorite } = useFavorites();
+  useEffect(() => pushRecent(pageId), [pageId]);
   const router = useRouter();
   const qc = useQueryClient();
 
@@ -45,7 +56,8 @@ export function PageView({ pageId }: { pageId: string }) {
 
   const isBlank = !page.content_json || page.content_json.length === 0;
   const parentIsDatabase = pages.data?.some((p) => p.id === page.parent_id && p.is_database);
-  const fullWidth = Boolean(page.row_properties?.__fullWidth);
+  // Banco de dados abre em largura total, como no Notion; a escolha da pessoa prevalece.
+  const fullWidth = Boolean(page.row_properties?.__fullWidth ?? page.is_database);
   const useTemplate = async () => {
     const id = await createTaskTemplate(page.workspace_id);
     qc.invalidateQueries({ queryKey: ["pages"] });
@@ -55,7 +67,7 @@ export function PageView({ pageId }: { pageId: string }) {
 
   return (
     <article>
-      <div className="sticky top-0 z-30 flex h-11 items-center gap-3 bg-[var(--n-bg)]/80 px-4 pl-11 text-xs text-[var(--n-text-faint)] backdrop-blur">
+      <div className="sticky top-0 z-30 flex h-11 items-center gap-3 bg-[var(--n-bg)]/80 px-4 pl-11 print:hidden text-xs text-[var(--n-text-faint)] backdrop-blur">
         <nav aria-label="Caminho da página" className="flex min-w-0 flex-1 items-center gap-1 text-sm text-[var(--n-text-muted)]">
           {trail.map((p) => (
             <span key={p.id} className="flex min-w-0 items-center gap-1">
@@ -65,12 +77,23 @@ export function PageView({ pageId }: { pageId: string }) {
           ))}
           <span aria-current="page" className="truncate px-1 text-[var(--n-text)]">{page.icon} {page.title || "Sem título"}</span>
         </nav>
+        <ShareMenu pageId={page.id} workspaceId={page.workspace_id} />
         <button type="button" aria-pressed={fullWidth} title="Largura total"
           onClick={() => updatePage.mutate({ id: page.id, patch: { row_properties: { ...page.row_properties, __fullWidth: !fullWidth } } })}
           className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-[var(--n-hover)] ${fullWidth ? "text-[var(--n-accent)]" : ""}`}>
           <ChevronsLeftRight size={13} /> Largura total
         </button>
+        <button type="button" aria-pressed={isFavorite(page.id)} aria-label={isFavorite(page.id) ? "Remover dos favoritos" : "Favoritar"}
+          onClick={() => void toggleFavorite(page.id)} className="shrink-0 rounded p-1 hover:bg-[var(--n-hover)]">
+          <Star size={14} className={isFavorite(page.id) ? "fill-yellow-400 text-yellow-400" : ""} />
+        </button>
+        {!page.is_database && <VersionsMenu pageId={page.id} onRestored={() => setRevision((r) => r + 1)} />}
         <span aria-live="polite" className="shrink-0">{LABEL[status]}</span>
+        <Pop open={menuOpen} onOpenChange={setMenuOpen} width={230} align="end" triggerClass="shrink-0 rounded p-1 hover:bg-[var(--n-hover)]"
+          trigger={<MoreHorizontal size={15} aria-label="Opções da página" />}>
+          <PageMenu pageId={page.id} onClose={() => setMenuOpen(false)}
+            onRename={() => { setMenuOpen(false); setTimeout(() => document.querySelector<HTMLElement>('textarea[aria-label="Título da página"]')?.focus(), 50); }} />
+        </Pop>
       </div>
       <div className="-mt-11"><PageHeader page={page} fullWidth={fullWidth} /></div>
 
@@ -110,13 +133,15 @@ export function PageView({ pageId }: { pageId: string }) {
               </div>
             )}
             <BlockEditor
-              key={page.id}
+              key={`${page.id}:${revision}`}
               pageId={page.id}
               initialContent={page.content_json}
               onStatus={setStatus}
             />
           </>
         )}
+        <Backlinks pageId={page.id} />
+        <PageActivity pageId={page.id} />
       </div>
     </article>
   );

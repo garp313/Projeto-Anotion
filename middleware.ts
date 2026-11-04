@@ -22,6 +22,8 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
   const isAuthRoute = req.nextUrl.pathname.startsWith("/login") || req.nextUrl.pathname.startsWith("/register");
   const isOAuthCallback = req.nextUrl.pathname.startsWith("/auth/callback");
+  // Cron e webhooks não têm sessão: cada rota valida o próprio segredo.
+  if (/^\/api\/(cron|google\/webhook)\//.test(req.nextUrl.pathname)) return res;
   if (!session && req.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   if (!session && !isAuthRoute && !isOAuthCallback) return NextResponse.redirect(new URL("/login", req.url));
   if (session && isAuthRoute) return NextResponse.redirect(new URL("/workspace", req.url));

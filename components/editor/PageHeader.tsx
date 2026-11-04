@@ -44,7 +44,7 @@ export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWi
         </div>
       ) : <div className="h-12" />}
 
-      <div className={fullWidth ? "w-full px-6 sm:px-12" : "mx-auto w-full max-w-[900px] px-[max(24px,calc(50%-450px+96px))]"}>
+      <div className={fullWidth ? "w-full px-6 sm:px-12" : "mx-auto w-full max-w-[960px] px-6 sm:px-12"}>
         <div className={`relative ${page.cover ? "-mt-9" : ""}`}>
           {page.icon && (
             <Popover.Root>

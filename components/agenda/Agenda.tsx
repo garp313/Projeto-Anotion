@@ -1,4 +1,5 @@
 "use client";
+import { connectGoogle } from "@/lib/collab";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,18 +45,7 @@ async function api(url: string, init?: RequestInit) {
   return res.status === 204 ? null : res.json();
 }
 
-async function connect() {
-  // O callback lê este cookie para saber que deve guardar os tokens e voltar para cá.
-  document.cookie = "after_auth=/agenda; path=/; max-age=600; samesite=lax";
-  await createClient().auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-      scopes: "https://www.googleapis.com/auth/calendar",
-      queryParams: { access_type: "offline", prompt: "consent" },
-    },
-  });
-}
+const connect = connectGoogle;
 
 function newDraft(day: Date, calendarId: string, hour = 9): Draft {
   const s = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour);
@@ -75,8 +65,8 @@ function toDraft(e: GEvent): Draft {
   };
 }
 
-function EventDialog({ draft, calendars, onClose, onSave, onDelete, busy, error }: {
-  draft: Draft; calendars: Calendar[]; onClose: () => void; onSave: (d: Draft) => void; onDelete: (d: Draft) => void; busy: boolean; error: string | null;
+function EventDialog({ draft, calendars, onClose, onSave, onDelete, onMinutes, busy, error }: {
+  draft: Draft; calendars: Calendar[]; onClose: () => void; onSave: (d: Draft) => void; onDelete: (d: Draft) => void; onMinutes: (d: Draft) => void; busy: boolean; error: string | null;
 }) {
   const [d, setD] = useState(draft);
   const [confirming, setConfirming] = useState(false);
@@ -100,6 +90,7 @@ function EventDialog({ draft, calendars, onClose, onSave, onDelete, busy, error 
         <div className="flex items-center gap-2">
           <input autoFocus required aria-label="Título" placeholder="Adicionar título" value={d.summary} onChange={(e) => set({ summary: e.target.value })}
             className="min-w-0 flex-1 bg-transparent text-lg font-semibold outline-none placeholder:text-[var(--n-text-faint)]" />
+          {d.id && <button type="button" onClick={() => onMinutes(d)} className="rounded border border-[var(--n-border)] px-2 py-0.5 text-xs hover:bg-[var(--n-hover)]">Criar ata</button>}
           {d.htmlLink && <a href={d.htmlLink} target="_blank" rel="noreferrer" aria-label="Abrir no Google Agenda" className="rounded p-1 hover:bg-[var(--n-hover)]"><ExternalLink size={15} /></a>}
           <button type="button" aria-label="Fechar" onClick={onClose} className="rounded p-1 hover:bg-[var(--n-hover)]"><X size={16} /></button>
         </div>
@@ -274,7 +265,7 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
     retry: false,
   });
 
-  const tasks = useQuery({ queryKey: ["tasks"], queryFn: loadTasks });
+  const tasks = useQuery({ queryKey: ["tasks"], queryFn: () => loadTasks() });
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["calendar"] });
   const save = useMutation({
@@ -359,6 +350,15 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
           key={draft.id ?? "new"} draft={draft} calendars={calendars} busy={save.isPending || remove.isPending}
           error={save.error?.message ?? remove.error?.message ?? null}
           onClose={() => setDraft(null)} onSave={(d) => save.mutate(d)} onDelete={(d) => remove.mutate(d)}
+          onMinutes={async (d) => {
+            const res = await fetch("/api/calendar/minutes", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ eventId: d.id, summary: d.summary, start: d.start, attendees: d.attendees.split(",").map((s) => s.trim()).filter(Boolean) }),
+            });
+            if (!res.ok) return;
+            qc.invalidateQueries({ queryKey: ["pages"] });
+            router.push(`/workspace/${(await res.json()).pageId}`);
+          }}
         />
       )}
     </div>

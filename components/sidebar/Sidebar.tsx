@@ -1,16 +1,47 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronsLeft, ListChecks, Menu, Plus, Search } from "lucide-react";
+import { Bell, CalendarDays, ChevronsLeft, FileText, ListChecks, Menu, Plus, Search } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
+import { connectGoogle, useGoogleStatus, useUnreadCount } from "@/lib/collab";
 import { useSidebar } from "@/lib/store/sidebar";
 import { useEmptyPageCleanup } from "@/lib/hooks/useEmptyPageCleanup";
+import { useFavorites, useRecents } from "@/lib/hooks/useFavorites";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { PageTree } from "./PageTree";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { Trash } from "./Trash";
 
 export function Sidebar() {
   const { collapsed, width, toggle, setWidth } = useSidebar();
-  const { tree, pages, workspace, createPage, archivePage, movePage } = usePageTree();
+  const { tree, pages, workspace, createPage, movePage } = usePageTree();
+  const { favorites } = useFavorites();
+  const recents = useRecents();
+  const { data: unread = 0 } = useUnreadCount();
+  const { data: google } = useGoogleStatus();
+  const qc = useQueryClient();
+  // Convites feitos antes de a pessoa ter conta valem a partir do primeiro login.
+  useEffect(() => {
+    createClient().rpc("accept_invites").then(({ data }) => { if (data) { qc.invalidateQueries({ queryKey: ["pages"] }); qc.invalidateQueries({ queryKey: ["members"] }); } });
+  }, [qc]);
+  const byId = useMemo(() => new Map((pages.data ?? []).map((p) => [p.id, p])), [pages.data]);
+  const quick = (label: string, ids: string[], empty?: string) => {
+    const list = ids.map((id) => byId.get(id)).filter((p) => p !== undefined);
+    if (!list.length && !empty) return null;
+    return (
+      <section aria-label={label}>
+        <div className="px-2 pb-1 pt-3 text-xs font-medium text-[var(--n-text-faint)]">{label}</div>
+        {!list.length && <p className="px-2 text-xs text-[var(--n-text-faint)]">{empty}</p>}
+        {list.map((p) => (
+          <Link key={p.id} href={`/workspace/${p.id}`} className="flex h-[27px] items-center gap-1.5 rounded px-2 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">
+            <span className="grid w-5 shrink-0 place-items-center text-[15px]">{p.icon ?? <FileText size={15} />}</span>
+            <span className="truncate">{p.title || "Sem título"}</span>
+          </Link>
+        ))}
+      </section>
+    );
+  };
   const dragging = useRef(false);
   useEmptyPageCleanup(pages.data);
 
@@ -59,11 +90,17 @@ export function Sidebar() {
             <button className={row} onClick={() => window.dispatchEvent(new CustomEvent("open-search"))}>
               <Search size={16} /> Buscar <kbd className="ml-auto text-xs text-[var(--n-text-faint)]">Ctrl K</kbd>
             </button>
+            <Link href="/inbox" className={row}>
+              <Bell size={16} /> Inbox
+              {unread > 0 && <span aria-label={`${unread} não lidas`} className="ml-auto rounded-full bg-[var(--n-accent)] px-1.5 text-[11px] font-medium text-white">{unread}</span>}
+            </Link>
             <Link href="/tarefas" className={row}><ListChecks size={16} /> Minhas tarefas</Link>
             <Link href="/agenda" className={row}><CalendarDays size={16} /> Agenda</Link>
           </div>
 
           <div className="n-scroll flex-1 overflow-y-auto px-1.5 pb-2">
+            {quick("Favoritos", favorites, "Use a estrela no topo de uma página.")}
+            {quick("Recentes", recents.slice(0, 5))}
             <div className="group flex items-center px-2 pb-1 pt-3 text-xs font-medium text-[var(--n-text-faint)]">
               Páginas
               <button aria-label="Nova página" onClick={() => createPage.mutate(null)}
@@ -76,12 +113,15 @@ export function Sidebar() {
               : <PageTree
                   tree={tree}
                   onCreate={(id) => createPage.mutate(id)}
-                  onArchive={(id) => archivePage.mutate(id)}
                   onMove={(id, parentId, position) => movePage.mutate({ id, parentId, position })}
                 />}
           </div>
 
           <div className="border-t border-[var(--n-border)] p-1.5">
+            {google?.status === "reconnect" && (
+              <button type="button" className={`${row} text-orange-500`} onClick={() => void connectGoogle()}>Reconectar Google</button>
+            )}
+            <Trash triggerClass={row} />
             <button className={row} onClick={() => createPage.mutate(null)}><Plus size={16} /> Nova página</button>
           </div>
         </div>

@@ -52,7 +52,7 @@ export function SearchModal() {
     const q = fold(query.trim());
     if (!q) {
       return (pages.data ?? []).slice(0, 15).map((p) => ({
-        kind: "page", hit: { kind: "page", id: p.id, title: p.title, icon: p.icon, fields: [] },
+        kind: "page", hit: { kind: "page", id: p.id, title: p.title, icon: p.icon, fields: [], links: [] },
       }));
     }
     const titled: Result[] = [], inside: Result[] = [];
