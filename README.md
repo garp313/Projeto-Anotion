@@ -2,10 +2,10 @@
 
 1. `npm install`
 2. Crie um projeto no Supabase e rode, nesta ordem, no SQL Editor:
-   as migrations de `supabase/migrations/`, de `0001` a `0006`.
+   as migrations de `supabase/migrations/`, de `0001` a `0007`.
 3. Copie `.env.example` para `.env.local` e preencha URL e anon key.
-4. (Dev) Em Authentication > Providers > Email, desative "Confirm email" para entrar logo após o cadastro.
-   Com convites em uso, deixe ativado: sem confirmação, quem criar conta com o e-mail convidado recebe o acesso.
+4. Em Authentication > Providers > Email, mantenha "Confirm email" ativado. Quem tem e-mail @usereserva.com entra
+   sem convite, então sem confirmação qualquer um se cadastraria com um endereço que não é dele.
 5. `npm run dev` e abra http://localhost:3000
 
 ## Google

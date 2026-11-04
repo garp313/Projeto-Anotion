@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export const RESTRICTED = "Este app é restrito ao time. Peça um convite ao administrador.";
+export const RESTRICTED = "Este app é restrito ao time. Use seu e-mail @usereserva.com.";
 
 export function AuthForm({ mode, initialError = null, next = null }: { mode: "login" | "register"; initialError?: string | null; next?: string | null }) {
   const router = useRouter();
