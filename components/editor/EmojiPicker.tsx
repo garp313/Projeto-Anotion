@@ -1,42 +1,85 @@
 "use client";
-import * as Popover from "@radix-ui/react-dropdown-menu";
 
-export const NOTION_EMOJIS = [
-  "📄", "📝", "📚", "💡", "🚀", "🎯", "✅", "📅", "🏠", "💼", "🧠", "🔥",
-  "⭐", "🎨", "🛠️", "📊", "🌱", "🎵", "🍕", "✈️", "❤️", "🔒", "📌", "🧪",
-  "☕", "💻", "📦", "📈", "🔍", "🔑", "🏆", "🌟", "⚡", "✨", "🤖", "🌐"
-];
+import { useState, useRef, useEffect, ReactNode } from "react";
 
-type Props = {
-  onSelect: (emoji: string) => void;
-  onRemove?: () => void;
+type EmojiPickerProps = {
+  currentIcon?: string | null;
+  onSelectEmoji?: (icon: string | null) => void;
+  onSelect?: (icon: string | null) => void;
+  children: ReactNode;
 };
 
-export function EmojiPicker({ onSelect, onRemove }: Props) {
+const NOTION_EMOJIS = [
+  "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣",
+  "🎯", "🚀", "💡", "🔥", "⭐", "🎉", "📝", "📌",
+  "⚙️", "🛠️", "📊", "📈", "💻", "📁", "📂", "📅"
+];
+
+export function EmojiPicker({ onSelectEmoji, onSelect, children }: EmojiPickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Captura a função independentemente do nome usado na prop
+  const handleSelect = (emoji: string | null) => {
+    if (onSelectEmoji) onSelectEmoji(emoji);
+    if (onSelect) onSelect(emoji);
+    setIsOpen(false);
+  };
+
+  // Fecha o popover ao clicar fora dele
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   return (
-    <div className="w-[280px] rounded-xl border border-[var(--n-border)] bg-[var(--n-bg)] p-2 shadow-2xl">
-      <div className="mb-2 px-1 text-[11px] font-semibold text-[var(--n-text-faint)]">
-        Selecionar ícone
+    <div className="relative inline-block" ref={containerRef}>
+      <div 
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }} 
+        className="cursor-pointer"
+      >
+        {children}
       </div>
-      <div className="grid grid-cols-6 gap-1">
-        {NOTION_EMOJIS.map((e) => (
-          <Popover.Item
-            key={e}
-            onSelect={() => onSelect(e)}
-            className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg text-xl outline-none hover:bg-[var(--n-hover)] data-[highlighted]:bg-[var(--n-hover)]"
-          >
-            {e}
-          </Popover.Item>
-        ))}
-      </div>
-      {onRemove && (
-        <div className="mt-2 border-t border-[var(--n-border)] pt-1">
-          <Popover.Item
-            onSelect={onRemove}
-            className="w-full cursor-pointer rounded-lg px-2 py-1 text-center text-xs text-[var(--n-text-faint)] outline-none hover:bg-[var(--n-hover)] hover:text-[var(--n-text)]"
-          >
-            Remover ícone
-          </Popover.Item>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-xl border border-[var(--n-border)] bg-[var(--n-bg)] p-3 shadow-xl outline-none">
+          <div className="mb-2 flex items-center justify-between text-xs font-semibold text-[var(--n-text-muted)]">
+            <span>Escolher ícone</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSelect(null);
+              }}
+              className="text-[10px] text-red-500 hover:underline"
+            >
+              Remover
+            </button>
+          </div>
+
+          <div className="grid grid-cols-6 gap-1">
+            {NOTION_EMOJIS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  handleSelect(e);
+                }}
+                className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg text-xl outline-none hover:bg-[var(--n-hover)] focus:bg-[var(--n-hover)]"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
