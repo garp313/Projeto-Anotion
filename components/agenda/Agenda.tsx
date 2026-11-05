@@ -347,7 +347,10 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
         <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-orange-400/60 px-3 py-2 text-sm">
           <CalendarDays size={16} className="text-orange-500" />
           <span className="min-w-0 flex-1 text-[var(--n-text-muted)]">{error.message} Os prazos das tarefas continuam abaixo.</span>
-          <button type="button" onClick={connect} className="rounded-md bg-[var(--n-accent)] px-2.5 py-1 text-xs font-medium text-white hover:brightness-95">Reconectar Google</button>
+          {/* Reconectar não adianta com a API desligada: a conta já está certa, falta ligar no projeto. */}
+          {/desligada/.test(error.message)
+            ? <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" rel="noreferrer" className="rounded-md bg-[var(--n-accent)] px-2.5 py-1 text-xs font-medium text-white hover:brightness-95">Ativar a API</a>
+            : <button type="button" onClick={connect} className="rounded-md bg-[var(--n-accent)] px-2.5 py-1 text-xs font-medium text-white hover:brightness-95">Reconectar Google</button>}
         </div>
       )}
       {data?.failed?.length ? <p role="status" className="mb-3 text-xs text-[var(--n-text-faint)]">Não foi possível ler: {data.failed.join(", ")}.</p> : null}
