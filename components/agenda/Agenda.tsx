@@ -42,9 +42,9 @@ async function api(url: string, init?: RequestInit) {
   const res = await fetch(url, init);
   if (res.status === 401) throw new NotConnectedError();
   if (!res.ok) {
-    const { error } = await res.json().catch(() => ({ error: "" }));
+    const { error, project } = await res.json().catch(() => ({ error: "", project: "" }));
     throw new Error(error === "api_disabled"
-      ? "A Google Calendar API está desligada no projeto do Google Cloud."
+      ? `A Google Calendar API está desligada no projeto ${project ? `${project} ` : ""}do Google Cloud.`
       : "Não foi possível falar com o Google Agenda.");
   }
   return res.status === 204 ? null : res.json();
@@ -349,7 +349,7 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
           <span className="min-w-0 flex-1 text-[var(--n-text-muted)]">{error.message} Os prazos das tarefas continuam abaixo.</span>
           {/* Reconectar não adianta com a API desligada: a conta já está certa, falta ligar no projeto. */}
           {/desligada/.test(error.message)
-            ? <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" rel="noreferrer" className="rounded-md bg-[var(--n-accent)] px-2.5 py-1 text-xs font-medium text-white hover:brightness-95">Ativar a API</a>
+            ? <a href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com${/projeto (\d+)/.exec(error.message) ? `?project=${/projeto (\d+)/.exec(error.message)![1]}` : ""}`} target="_blank" rel="noreferrer" className="rounded-md bg-[var(--n-accent)] px-2.5 py-1 text-xs font-medium text-white hover:brightness-95">Ativar a API</a>
             : <button type="button" onClick={connect} className="rounded-md bg-[var(--n-accent)] px-2.5 py-1 text-xs font-medium text-white hover:brightness-95">Reconectar Google</button>}
         </div>
       )}

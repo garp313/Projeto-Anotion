@@ -9,7 +9,7 @@ import { Choice, fieldClass } from "@/components/database/ui";
 
 type Message = { id: string; subject: string; from: string; date: string; snippet: string; pageId: string | null };
 
-async function search(q: string): Promise<{ messages?: Message[]; error?: string }> {
+async function search(q: string): Promise<{ messages?: Message[]; error?: string; project?: string }> {
   const res = await fetch(`/api/gmail/messages?q=${encodeURIComponent(q)}`);
   return res.json();
 }
@@ -49,8 +49,8 @@ export function EmailsPanel() {
     return (
       <div role="alert" className="rounded-lg border border-dashed border-[var(--n-border)] p-6 text-center">
         <Mail size={24} className="mx-auto mb-2 text-[var(--n-text-faint)]" />
-        <p className="mb-2 text-sm text-[var(--n-text-muted)]">A Gmail API está desligada no projeto do Google Cloud. Quem administra o app precisa ativá-la.</p>
-        <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noreferrer" className="text-sm text-[var(--n-accent)] underline">Abrir a Gmail API</a>
+        <p className="mb-2 text-sm text-[var(--n-text-muted)]">A Gmail API está desligada no projeto {list.data?.project ? `${list.data.project} ` : ""}do Google Cloud. Quem administra o app precisa ativá-la.</p>
+        <a href={`https://console.cloud.google.com/apis/library/gmail.googleapis.com${list.data?.project ? `?project=${list.data.project}` : ""}`} target="_blank" rel="noreferrer" className="text-sm text-[var(--n-accent)] underline">Abrir a Gmail API</a>
       </div>
     );
   }

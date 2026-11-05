@@ -80,8 +80,11 @@ export async function google<T = any>(path: string, init: RequestInit = {}): Pro
 export function calendarError(e: unknown) {
   if (e instanceof NotConnected) return NextResponse.json({ error: "not_connected" }, { status: 401 });
   console.error(e);
-  const disabled = /accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(String(e));
-  return NextResponse.json({ error: disabled ? "api_disabled" : "calendar_error" }, { status: 502 });
+  const text = String(e);
+  const disabled = /accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(text);
+  // O Google diz em qual projeto a API está desligada, e ele pode não ser o que a pessoa abriu.
+  const project = /projects?[ /=](\d+)/i.exec(text)?.[1];
+  return NextResponse.json({ error: disabled ? "api_disabled" : "calendar_error", project }, { status: 502 });
 }
 
 export type EventInput = {

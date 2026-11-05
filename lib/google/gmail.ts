@@ -11,14 +11,14 @@ export type FullMessage = MessageSummary & { body: string; threadId?: string; me
 
 /** O Google recusou a leitura. "kind" separa o que a pessoa resolve (autorizar) do que é configuração do projeto. */
 export class GmailScopeError extends Error {
-  constructor(public kind: "needs_scope" | "api_disabled" = "needs_scope") { super(kind); }
+  constructor(public kind: "needs_scope" | "api_disabled" = "needs_scope", public project?: string) { super(kind); }
 }
 
 async function read<T>(token: string, path: string): Promise<T> {
   const res = await fetch(`${API}${path}`, { cache: "no-store", headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 401 || res.status === 403) {
     const detail = await res.text().catch(() => "");
-    throw new GmailScopeError(/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(detail) ? "api_disabled" : "needs_scope");
+    throw new GmailScopeError(/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(detail) ? "api_disabled" : "needs_scope", /projects?[ /=](\d+)/i.exec(detail)?.[1]);
   }
   if (!res.ok) throw new Error(`Gmail respondeu ${res.status}`);
   return res.json();

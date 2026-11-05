@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const linked = new Map((data ?? []).map((l) => [l.external_id, l.page_id]));
     return NextResponse.json({ messages: messages.map((m) => ({ ...m, pageId: linked.get(m.id) ?? null })) });
   } catch (e) {
-    if (e instanceof GmailScopeError) return NextResponse.json({ error: e.kind }, { status: 403 });
+    if (e instanceof GmailScopeError) return NextResponse.json({ error: e.kind, project: e.project }, { status: 403 });
     console.error(e);
     return NextResponse.json({ error: "gmail_error" }, { status: 502 });
   }
