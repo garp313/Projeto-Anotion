@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { createTaskTemplate, loadTasks, setTaskStatus, type Task } from "@/lib/tasks";
 import { Choice, OptionTag, Pop, menuItem } from "@/components/database/ui";
+import { isAssignedTo } from "@/lib/assignee";
+import { useMembers } from "@/lib/collab";
 import { formatDateValue } from "@/components/database/values";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -101,17 +103,18 @@ export function MyTasks() {
     onSuccess: (id) => { qc.invalidateQueries({ queryKey: ["pages"] }); router.push(`/workspace/${id}`); },
   });
 
-  const assigned = useMemo(
-    () => (data?.tasks ?? []).filter((t) => t.people.some((p) => p.id === me?.id || me?.names.includes(p.name))),
-    [data, me]
-  );
+  const { data: members = [] } = useMembers();
+  const assigned = useMemo(() => {
+    // O nome do perfil do time vale junto com o da sessão.
+    const profile = members.filter((m) => m.id === me?.id).flatMap((m) => [m.name, m.email]);
+    const who = me && { id: me.id, names: [...me.names, ...profile].filter(Boolean) };
+    return (data?.tasks ?? []).filter((t) => isAssignedTo(t.people, who));
+  }, [data, me, members]);
   const [project, setProject] = useState("");
   const projectNames = useMemo(() => [...new Set(assigned.flatMap((t) => t.projects))].sort(), [assigned]);
   const buckets = useMemo(() => {
-    const open = assigned.filter((t) => !t.done && (!project || t.projects.includes(project)));
-    const own = open.filter((t) => t.isProject);
-    const groups = bucketize(open.filter((t) => !t.isProject));
-    return own.length ? [...groups, { id: "projects", label: "Projetos", tasks: own }] : groups;
+    // Toda demanda atribuída entra por prazo, venha do banco que vier.
+    return bucketize(assigned.filter((t) => !t.done && (!project || t.projects.includes(project))));
   }, [assigned, project]);
   const finished = useMemo(() => assigned.filter((t) => t.done), [assigned]);
 

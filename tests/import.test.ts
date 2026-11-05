@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { nameMatch, parseCheckbox, parseDate, parseMulti, parseNumber, parsePercent, parseRelation } from "@/lib/import/parsers";
 import { parseCsvText, readNotionZip, splitMarkdown } from "@/lib/import/notionZip";
 import { applyToSchema, convertRow, detectType, suggestColumns, suggestPeople, suggestValues, type DbPlan } from "@/lib/import/mapping";
+import { isAssignedTo } from "@/lib/assignee";
 import type { ColumnSchema } from "@/components/database/types";
 
 describe("parseDate", () => {
@@ -162,6 +163,18 @@ describe("plano no formato real", () => {
 
 describe("coluna criada pela importação", () => {
   it("volta como texto, não como pessoa", () => expect(detectType("Responsáveis (Notion)", ["Humberto Barbatti"])).toBe("text"));
+});
+
+describe("demanda atribuída", () => {
+  const me = { id: "u1", names: ["Thiago da Silva Costa", "thiago@usereserva.com"] };
+  it("pelo id da conta", () => expect(isAssignedTo([{ id: "u1", name: "Outro nome" }], me)).toBe(true));
+  it("pelo nome exato, sem acento e caixa", () => expect(isAssignedTo([{ name: "THIAGO DA SILVA COSTA" }], me)).toBe(true));
+  it("pelo nome abreviado do Notion", () => expect(isAssignedTo([{ name: "Thiago Costa" }], me)).toBe(true));
+  it("pelo e-mail", () => expect(isAssignedTo([{ name: "thiago@usereserva.com" }], me)).toBe(true));
+  it("outra conta com o mesmo nome também é você", () => expect(isAssignedTo([{ id: "u9", name: "Thiago da Silva Costa" }], me)).toBe(true));
+  it("não pega outra pessoa", () => expect(isAssignedTo([{ id: "u2", name: "Thiago Mendes" }, { name: "Ludmila Soares" }], me)).toBe(false));
+  it("só o primeiro nome não basta", () => expect(isAssignedTo([{ name: "Thiago" }], me)).toBe(false));
+  it("sem sessão não atribui", () => expect(isAssignedTo([{ name: "Thiago Costa" }], null)).toBe(false));
 });
 
 // O arquivo real fica fora do git: o teste só roda onde ele existir.

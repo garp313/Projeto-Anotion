@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { setRowProp } from "@/lib/rowProps";
+import { parseMulti } from "@/lib/import/parsers";
+import { OUTSIDERS } from "@/lib/import/mapping";
 import type { ColumnSchema, DatabaseRow, DateValue, PersonValue, Repeat, SelectOption } from "@/components/database/types";
 import { COLORS, DEFAULT_SCHEMA, defaultView } from "@/components/database/types";
 import { asDate } from "@/components/database/values";
@@ -49,7 +51,8 @@ export async function loadTasks(client?: ReturnType<typeof createClient>): Promi
     const schema = schemas.get(r.parent_id)!;
     const dates = schema.filter((c) => c.type === "date");
     const dateCol = dates.find((c) => DUE_NAME.test(c.name)) ?? dates[0];
-    const personCol = schema.find((c) => c.type === "person");
+    const personCols = schema.filter((c) => c.type === "person");
+    const textPeople = schema.filter((c) => c.type === "text" && c.name === OUTSIDERS);
     const statusCol = schema.find((c) => c.type === "status");
     const props = r.row_properties ?? {};
     const status = statusCol?.options?.find((o) => o.id === props[statusCol.id]);
@@ -61,7 +64,11 @@ export async function loadTasks(client?: ReturnType<typeof createClient>): Promi
       databaseTitle: dbs!.find((d) => d.id === r.parent_id)?.title ?? "",
       due: dateCol ? asDate(props[dateCol.id]) : null,
       done: status?.group === "complete",
-      people: personCol && Array.isArray(props[personCol.id]) ? props[personCol.id] : [],
+      // Toda coluna de pessoa conta, e também os nomes que a importação guardou como texto.
+      people: [
+        ...personCols.flatMap((c) => (Array.isArray(props[c.id]) ? props[c.id] as PersonValue[] : [])),
+        ...textPeople.flatMap((c) => parseMulti(String(props[c.id] ?? "")).map((name) => ({ name }))),
+      ],
       isProject: schema.some((c) => c.type === "rollup"),
       projects: linked.map((id) => titles.get(id)).filter((t): t is string => Boolean(t)),
       statusColId: statusCol?.id,

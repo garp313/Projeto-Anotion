@@ -8,6 +8,7 @@ import { connectGoogle, notMigrated, type Notification } from "@/lib/collab";
 import { loadTasks, type Task } from "@/lib/tasks";
 import { formatDateValue } from "@/components/database/values";
 import { EmailsPanel } from "./EmailsPanel";
+import { isAssignedTo } from "@/lib/assignee";
 
 /** A lista completa fica em Minhas tarefas: aqui os prazos não podem esconder as notificações. */
 const ALERTS_SHOWN = 5;
@@ -52,7 +53,7 @@ export function Inbox() {
   });
   const tasks = useQuery({ queryKey: ["tasks"], queryFn: () => loadTasks() });
   const alerts = useMemo(() => (tasks.data?.tasks ?? [])
-    .filter((t) => !t.done && t.people.some((p) => p.id === me?.id || me?.names.includes(p.name)))
+    .filter((t) => !t.done && isAssignedTo(t.people, me))
     .map((t) => ({ task: t, alert: dueAlert(t) }))
     .filter((x) => x.alert)
     .sort((a, b) => (a.task.due!.start < b.task.due!.start ? -1 : 1)), [tasks.data, me]);
