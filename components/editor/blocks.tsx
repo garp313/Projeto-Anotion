@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { createReactBlockSpec, createReactInlineContentSpec, useEditorChange } from "@blocknote/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 
 const DatabaseView = dynamic(() => import("@/components/database/DatabaseView").then((m) => m.DatabaseView), { ssr: false });
@@ -123,15 +123,66 @@ export const BookmarkBlock = createReactBlockSpec(
   }
 );
 
+const MIN_HEIGHT = 200, MAX_HEIGHT = 1400, MIN_WIDTH = 30;
+
+/** Janela incorporada: largura em % acompanha a tela; a altura fica no valor escolhido. */
+function EmbedFrame({ url, block, editor }: { url: URL; block: any; editor: any }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ width: number; height: number } | null>(null);
+  const width: number = drag?.width ?? block.props.width;
+  const height: number = drag?.height ?? block.props.height;
+
+  const start = (e: React.PointerEvent, axis: "x" | "y" | "xy") => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Sem capturar, o ponteiro some ao entrar no iframe e o arrasto para no meio.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const parent = box.current?.parentElement?.clientWidth ?? 1;
+    const x0 = e.clientX, y0 = e.clientY, w0 = block.props.width, h0 = block.props.height;
+    let next = { width: w0, height: h0 };
+    setDrag(next);
+    const move = (m: PointerEvent) => {
+      next = {
+        width: axis === "y" ? w0 : Math.round(Math.min(100, Math.max(MIN_WIDTH, w0 + ((m.clientX - x0) / parent) * 100))),
+        height: axis === "x" ? h0 : Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, h0 + m.clientY - y0))),
+      };
+      setDrag(next);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDrag(null);
+      editor.updateBlock(block, { props: next });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const handle = "absolute z-10 touch-none rounded bg-[var(--n-accent)] opacity-0 transition-opacity group-hover/embed:opacity-70 hover:!opacity-100";
+  return (
+    <div ref={box} data-testid="embed-box" style={{ width: `${width}%`, height }} className="group/embed relative max-w-full">
+      {/* Sobre o iframe o navegador perde o ponteiro: durante o arrasto ele não recebe eventos. */}
+      <iframe title={url.hostname} src={url.href} sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+        className={`h-full w-full rounded-md border border-[var(--n-border)] ${drag ? "pointer-events-none" : ""}`} />
+      <span role="separator" aria-orientation="vertical" aria-label="Ajustar largura" onPointerDown={(e) => start(e, "x")}
+        className={`${handle} right-0 top-1/2 h-12 w-2 -translate-y-1/2 cursor-ew-resize`} />
+      <span role="separator" aria-orientation="horizontal" aria-label="Ajustar altura" onPointerDown={(e) => start(e, "y")}
+        className={`${handle} bottom-0 left-1/2 h-2 w-12 -translate-x-1/2 cursor-ns-resize`} />
+      <span role="separator" aria-label="Ajustar tamanho" onPointerDown={(e) => start(e, "xy")}
+        className={`${handle} bottom-0 right-0 h-3 w-3 cursor-nwse-resize`} />
+    </div>
+  );
+}
+
 export const EmbedBlock = createReactBlockSpec(
-  { type: "embed", propSchema: { url: { default: "" } }, content: "none" },
+  { type: "embed", propSchema: { url: { default: "" }, width: { default: 100 }, height: { default: 384 } }, content: "none" },
   {
     render: ({ block, editor }) => {
       const u = block.props.url ? safeUrl(block.props.url) : null;
       return (
         <div contentEditable={false} className="my-1 w-full">
           {!u ? <UrlPrompt label="Incorporar" onSubmit={(url) => editor.updateBlock(block, { props: { url } })} />
-            : <iframe title={u.hostname} src={u.href} sandbox="allow-scripts allow-same-origin allow-popups allow-forms" className="h-96 w-full rounded-md border border-[var(--n-border)]" />}
+            : <EmbedFrame url={u} block={block} editor={editor} />}
         </div>
       );
     },
