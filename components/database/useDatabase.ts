@@ -6,7 +6,7 @@ import { fetchPage, type PageFull } from "@/lib/hooks/usePageTree";
 import type { ColumnSchema, DatabaseRow, DatabaseViewConfig } from "./types";
 import { DEFAULT_SCHEMA, defaultView, newId } from "./types";
 import type { Ctx, RelatedDb } from "./values";
-import { addMirror, detachMirror, mirrorIsValid, removeMirror, repairRelations } from "./relations";
+import { addMirror, detachMirror, mirrorIsValid, removeMirror, repairRelations, rollupsOf } from "./relations";
 import { spawnNextOccurrence } from "@/lib/tasks";
 import { memberName, scheduleEmails, useMembers, type Member } from "@/lib/collab";
 import { setRowProp } from "@/lib/rowProps";
@@ -278,6 +278,8 @@ export function useDatabase(databaseId: string) {
 
   /** Aponta a relação para um banco e cria o espelho do outro lado, como o Notion faz. */
   const linkRelation = async (col: ColumnSchema, targetId?: string) => {
+    const rollups = col.relationDatabaseId && col.relationSyncProp && col.relationDatabaseId !== databaseId
+      ? await rollupsOf(col.relationDatabaseId, col.relationSyncProp) : [];
     if (col.relationDatabaseId && col.relationSyncProp) {
       if (col.relationDatabaseId === databaseId) {
         await saveSchema(schema.filter((c) => c.id !== col.relationSyncProp).map((c) => (c.id === col.id ? { ...c, relationDatabaseId: targetId, relationSyncProp: undefined } : c)));
@@ -290,7 +292,9 @@ export function useDatabase(databaseId: string) {
       const mirror: ColumnSchema = { id: newId("p_"), name: `${col.name} (inverso)`, type: "relation", relationDatabaseId: databaseId, relationSyncProp: col.id };
       return saveSchema([...schema.map((c) => (c.id === col.id ? { ...next, relationSyncProp: mirror.id } : c)), mirror]);
     }
-    return saveColumn({ ...next, relationSyncProp: await addMirror(qc, targetId, name, databaseId, col.id) });
+    const saved = saveColumn({ ...next, relationSyncProp: await addMirror(qc, targetId, name, databaseId, col.id, rollups) });
+    qc.invalidateQueries({ queryKey: ["database_rows", targetId] });
+    return saved;
   };
   const unlinkMirror = async (col: ColumnSchema) => {
     if (col.relationDatabaseId && col.relationSyncProp) await removeMirror(qc, col.relationDatabaseId, col.relationSyncProp);

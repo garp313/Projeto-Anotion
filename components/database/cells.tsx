@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { DatePicker } from "./DatePicker";
 import { Check, ExternalLink, FileUp, Link2, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -272,12 +273,24 @@ function FilesField({ col, row, db, compact, dense }: CellProps) {
   );
 }
 
+type TreePage = { id: string; title: string; icon: string | null; is_database: boolean; parent_id: string | null };
+
+/** Bancos para escolher. Lê do que já está carregado: esta célula se repete em toda linha. */
+function databasesFor(qc: ReturnType<typeof useQueryClient>) {
+  const all = qc.getQueryData<TreePage[]>(["pages"]) ?? [];
+  const ids = new Set(all.filter((p) => p.is_database).map((p) => p.id));
+  return all.filter((p) => p.is_database && !(p.parent_id && ids.has(p.parent_id)));
+}
+
 function RelationField({ col, row, db, compact, dense }: CellProps) {
   const router = useRouter();
   const ids: string[] = rawValue(col, row, db.ctx) ?? [];
   const target = col.relationDatabaseId ? db.ctx.related[col.relationDatabaseId] : undefined;
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [picked, setPicked] = useState<{ id: string; title: string } | null>(null);
+  const qc = useQueryClient();
   if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
   const label = (r: DatabaseRow) => r.title || "Sem título";
   const shown = target.rows.filter((r) => label(r).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 50);
@@ -314,10 +327,31 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
           {ids.includes(r.id) && <Check size={14} className="ml-auto" />}
         </button>
       ))}
-      {!shown.length && !typed && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Nenhuma página encontrada.</p>}
+      {!shown.length && !typed && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Nenhuma página encontrada neste banco.</p>}
       <button type="button" disabled={busy || !typed} onClick={createNew} className={`${menuItem} disabled:opacity-60`}>
         <Plus size={14} /> {typed ? <span className="truncate">Criar “{typed}”</span> : <span>Digite um nome para criar novo</span>}
       </button>
+      <div className="mt-1 border-t border-[var(--n-border)] pt-1 text-xs text-[var(--n-text-muted)]">
+        {!changing ? (
+          <p className="flex items-center gap-1 px-2 py-0.5">
+            <span className="min-w-0 flex-1 truncate">Busca em: {databasesFor(qc).find((d) => d.id === col.relationDatabaseId)?.title || "banco"}</span>
+            <button type="button" onClick={() => setChanging(true)} className="shrink-0 text-[var(--n-accent)] hover:underline">Trocar banco</button>
+          </p>
+        ) : picked ? (
+          <div className="px-2 py-1">
+            <p className="mb-1">Buscar em “{picked.title}”? Vínculos deste campo com o banco atual deixam de valer.</p>
+            <div className="flex gap-1">
+              <button type="button" disabled={busy} className="rounded bg-[var(--n-accent)] px-2 py-0.5 font-medium text-white disabled:opacity-60"
+                onClick={async () => { setBusy(true); try { await db.linkRelation(col, picked.id); } finally { setBusy(false); setPicked(null); setChanging(false); } }}>Trocar</button>
+              <button type="button" className="rounded px-2 py-0.5 hover:bg-[var(--n-hover)]" onClick={() => setPicked(null)}>Cancelar</button>
+            </div>
+          </div>
+        ) : databasesFor(qc).filter((d) => d.id !== col.relationDatabaseId).map((d) => (
+          <button key={d.id} type="button" className={menuItem} onClick={() => setPicked({ id: d.id, title: d.title || "Sem título" })}>
+            <span className="truncate">{d.icon} {d.title || "Sem título"}</span>
+          </button>
+        ))}
+      </div>
     </Pop>
   );
 }

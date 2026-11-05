@@ -19,12 +19,18 @@ async function writeSchema(qc: QueryClient, id: string, schema: ColumnSchema[]) 
 }
 
 /** Cria no banco de destino a propriedade espelho e devolve o id dela. */
-export async function addMirror(qc: QueryClient, targetId: string, name: string, sourceId: string, sourceColId: string) {
+export async function addMirror(qc: QueryClient, targetId: string, name: string, sourceId: string, sourceColId: string, rollups: ColumnSchema[] = []) {
   const target = await load(targetId);
   if (!target) throw new Error("Banco de destino não encontrado");
   const mirror: ColumnSchema = { id: newId("p_"), name, type: "relation", relationDatabaseId: sourceId, relationSyncProp: sourceColId };
-  await writeSchema(qc, targetId, [...target.schema, mirror]);
+  const copies = rollups.map((c) => ({ ...c, id: newId("p_"), rollup: { ...c.rollup!, relationProp: mirror.id } }));
+  await writeSchema(qc, targetId, [...target.schema, mirror, ...copies]);
   return mirror.id;
+}
+
+/** Rollups que dependem do espelho: trocar o banco da relação leva eles junto. */
+export async function rollupsOf(targetId: string, mirrorId: string) {
+  return (await load(targetId))?.schema.filter((c) => c.rollup?.relationProp === mirrorId) ?? [];
 }
 
 /** Desfaz o vínculo sem apagar a coluna do outro lado: ela continua como relação de uma via. */
@@ -36,7 +42,7 @@ export async function detachMirror(qc: QueryClient, targetId: string, mirrorId: 
 
 export async function removeMirror(qc: QueryClient, targetId: string, mirrorId: string) {
   const target = await load(targetId);
-  if (target) await writeSchema(qc, targetId, target.schema.filter((c) => c.id !== mirrorId));
+  if (target) await writeSchema(qc, targetId, target.schema.filter((c) => c.id !== mirrorId && c.rollup?.relationProp !== mirrorId));
 }
 
 /** A propriedade do outro lado ainda é a relação esperada? Sem isso a sincronização sobrescreveria outro dado. */
