@@ -357,8 +357,8 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
 
       {isLoading && !notConnected ? <div className="h-96 animate-pulse rounded bg-[var(--n-hover)]/40" />
         : view === "month"
-          ? <MonthGrid start={start} anchor={anchor} events={events} onDayClick={(d) => create(d)} onOpen={open} />
-          : <WeekGrid start={start} events={events} onSlot={create} onOpen={open} />}
+          ? <div className="n-scroll overflow-x-auto"><div className="min-w-[640px]"><MonthGrid start={start} anchor={anchor} events={events} onDayClick={(d) => create(d)} onOpen={open} /></div></div>
+          : <div className="n-scroll overflow-x-auto"><div className="min-w-[640px]"><WeekGrid start={start} events={events} onSlot={create} onOpen={open} /></div></div>}
 
       {draft && (
         <EventDialog

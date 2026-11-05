@@ -3,7 +3,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BookmarkPlus, ChevronLeft, ChevronRight, Copy, GripVertical, Maximize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import type { ColumnSchema, DatabaseRow, DatabaseViewConfig, RollupFn } from "./types";
 import { DEFAULT_STATUS_OPTIONS, READ_ONLY } from "./types";
-import { aggregate, asDate, displayText, groupRows, isBlank, parseDay, rawValue, visibleProps, type Group } from "./values";
+import { aggregate, asDate, displayText, dueTone, groupRows, isBlank, isDone, parseDay, rawValue, visibleProps, type Group } from "./values";
 import type { Db } from "./useDatabase";
 import { PropertyPreview, PropertyValue } from "./cells";
 import { AddPropertyMenu, PropertyMenu } from "./PropertyMenu";
@@ -27,6 +27,9 @@ function groupValue(col: ColumnSchema | undefined, g: Group): Record<string, any
   if (col.type === "person") return { [col.id]: [g.value ?? { name: g.label }] };
   return { [col.id]: col.type === "multi_select" ? [g.id] : col.type === "checkbox" ? g.label === "Sim" : g.id };
 }
+const PAGE_SIZE = 100;
+const BOARD_PAGE = 30;
+const CALENDAR_LIMIT = 3;
 const canDropInto = (col?: ColumnSchema) => col && ["select", "status", "multi_select", "person"].includes(col.type);
 
 /** Título em edição logo após criar o cartão: Enter ou clicar fora confirma. */
@@ -132,6 +135,7 @@ function BulkBar({ db, ids, clear }: { db: Db; ids: string[]; clear: () => void 
   const [colId, setColId] = useState(cols.find((c) => c.type === "status")?.id ?? cols[0]?.id ?? "");
   const col = cols.find((c) => c.id === colId);
   const sample = db.rows.find((r) => r.id === ids[0]);
+  const [asking, setAsking] = useState(false);
   const many = { ...db, setValue: (_row: string, prop: string, value: any) => ids.forEach((id) => db.setValue(id, prop, value)) } as Db;
   return (
     <div role="toolbar" aria-label="Ações em massa" className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-[var(--n-border)] bg-[var(--n-hover)]/50 px-2 py-1 text-xs">
@@ -146,8 +150,15 @@ function BulkBar({ db, ids, clear }: { db: Db; ids: string[]; clear: () => void 
           </div>
         </>
       )}
-      <button type="button" className="ml-auto flex items-center gap-1 rounded px-1.5 py-1 text-red-500 hover:bg-[var(--n-hover)]"
-        onClick={() => { ids.forEach((id) => db.removeRow(id)); clear(); }}><Trash2 size={13} /> Excluir</button>
+      {asking ? (
+        <span className="ml-auto flex items-center gap-1">
+          <span>Excluir {ids.length}?</span>
+          <button type="button" className="rounded bg-red-500 px-1.5 py-1 font-medium text-white" onClick={() => { db.removeRows(ids); clear(); }}>Sim, excluir</button>
+          <button type="button" className="rounded px-1.5 py-1 hover:bg-[var(--n-hover)]" onClick={() => setAsking(false)}>Cancelar</button>
+        </span>
+      ) : (
+        <button type="button" className="ml-auto flex items-center gap-1 rounded px-1.5 py-1 text-red-500 hover:bg-[var(--n-hover)]" onClick={() => setAsking(true)}><Trash2 size={13} /> Excluir</button>
+      )}
       <button type="button" aria-label="Limpar seleção" onClick={clear} className="rounded p-1 hover:bg-[var(--n-hover)]"><X size={13} /></button>
     </div>
   );
@@ -189,6 +200,7 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
   const widthOf = (c: ColumnSchema) => widths[c.id] ?? view.widths?.[c.id] ?? (c.type === "title" ? 280 : 180);
   const dragRow = useRef<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [fresh, setFresh] = useState<string | null>(null);
   // Linhas excluídas ou escondidas por um filtro saem da seleção.
   const selected = picked.filter((id) => rows.some((r) => r.id === id));
@@ -218,9 +230,9 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
   return (
     <div>
     {selected.length > 0 && <BulkBar db={db} ids={selected} clear={() => setPicked([])} />}
-    <ScrollArea role="table" className="pb-2">
+    <ScrollArea role="table" className="max-h-[calc(100vh-110px)] overflow-y-auto pb-2">
       <div className="w-max min-w-full">
-        <div role="row" className="flex border-y border-[var(--n-border)]">
+        <div role="row" className="sticky top-0 z-30 flex border-y border-[var(--n-border)] bg-[var(--n-bg)]">
           <div className="sticky left-0 z-20 flex w-12 shrink-0 items-center justify-end bg-[var(--n-bg)] pr-1.5">
             <input type="checkbox" aria-label="Selecionar todas" className="accent-[var(--n-accent)]"
               checked={rows.length > 0 && selected.length === rows.length}
@@ -245,7 +257,7 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
                 <span className="text-xs text-[var(--n-text-faint)]">{g.rows.length}</span>
               </div>
             )}
-            {g.rows.map((row) => (
+            {g.rows.slice(0, limit).map((row) => (
               <div key={row.id} role="row"
                 onDragOver={(e) => e.preventDefault()} onDrop={() => dropRow(row, g.rows)}
                 className="group flex border-b border-[var(--n-border)] hover:bg-[var(--n-hover)]/40">
@@ -274,6 +286,11 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
                 ))}
               </div>
             ))}
+            {g.rows.length > limit && (
+              <button type="button" onClick={() => setLimit((n) => n + PAGE_SIZE)} className="flex h-8 w-full items-center border-b border-[var(--n-border)] text-sm text-[var(--n-accent)] hover:bg-[var(--n-hover)]">
+                <span className="sticky left-12 pl-12">Carregar mais ({g.rows.length - limit})</span>
+              </button>
+            )}
             <button type="button" onClick={() => void newRow({ ...defaults, ...groupValue(gcol, g) })}
               className="flex h-8 w-full items-center border-b border-[var(--n-border)] text-sm text-[var(--n-text-faint)] hover:bg-[var(--n-hover)]">
               <span className="sticky left-12 flex items-center gap-1.5 pl-12"><Plus size={14} /> Nova página</span>
@@ -297,10 +314,10 @@ function Card({ row, db, cols, open, draggable, onDragStart }: {
   const shown = cols.filter((c) => c.type !== "title" && !isBlank(rawValue(c, row, db.ctx)));
   return (
     <button type="button" draggable={draggable} onDragStart={onDragStart} onClick={() => open(row.id)}
-      className="block w-full rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] p-2 text-left shadow-sm hover:bg-[var(--n-hover)]">
+      className="block w-full overflow-hidden rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] p-2 text-left shadow-sm hover:bg-[var(--n-hover)]">
       <span title={titleOf(row)} className="block truncate text-sm font-medium">{row.icon} {titleOf(row)}</span>
       {shown.length > 0 && (
-        <span className="mt-1 flex flex-col items-start gap-1">
+        <span className="mt-1 flex min-w-0 flex-col items-start gap-1">
           {shown.map((c) => <PropertyPreview key={c.id} col={c} row={row} db={db} />)}
         </span>
       )}
@@ -314,6 +331,7 @@ export function BoardView({ db, view, rows, open, defaults }: ViewProps) {
   const cols = visibleProps(db.schema, view).filter((c) => c.id !== gcol?.id);
   const [over, setOver] = useState<string | null>(null);
   const [fresh, setFresh] = useState<string | null>(null);
+  const [more, setMore] = useState<Record<string, number>>({});
   if (!gcol) {
     return (
       <div className="py-10 text-center">
@@ -348,11 +366,17 @@ export function BoardView({ db, view, rows, open, defaults }: ViewProps) {
             <span className="text-xs text-[var(--n-text-faint)]">{g.rows.length}</span>
           </header>
           <div className="space-y-1.5">
-            {g.rows.map((r) => (
+            {g.rows.slice(0, more[g.id] ?? BOARD_PAGE).map((r) => (
               r.id === fresh
                 ? <QuickTitle key={r.id} row={r} db={db} onDone={() => setFresh(null)} />
                 : <Card key={r.id} row={r} db={db} cols={cols} open={open} draggable onDragStart={(e) => e.dataTransfer.setData("text/row", r.id)} />
             ))}
+            {g.rows.length > (more[g.id] ?? BOARD_PAGE) && (
+              <button type="button" onClick={() => setMore((m) => ({ ...m, [g.id]: (m[g.id] ?? BOARD_PAGE) + BOARD_PAGE }))}
+                className="w-full rounded px-1 py-1 text-left text-xs text-[var(--n-accent)] hover:bg-[var(--n-hover)]">
+                Mostrar mais ({g.rows.length - (more[g.id] ?? BOARD_PAGE)})
+              </button>
+            )}
           </div>
           <button type="button" onClick={async () => setFresh((await db.addRow({ row_properties: { ...defaults, ...groupValue(gcol, g) } })).id)}
             className="mt-1 flex w-full items-center gap-1 rounded px-1 py-1 text-xs text-[var(--n-text-faint)] hover:bg-[var(--n-hover)]">
@@ -433,6 +457,7 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
   const [month, setMonth] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [fresh, setFresh] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  const [opened, setOpened] = useState<string[]>([]);
   const cells = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1 - month.getDay());
     return Array.from({ length: 42 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
@@ -468,7 +493,8 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
         <button type="button" onClick={() => { const d = new Date(); d.setDate(1); setMonth(d); }} className="rounded px-2 py-0.5 text-xs hover:bg-[var(--n-hover)]">Hoje</button>
         <button type="button" aria-label="Próximo mês" onClick={() => shift(1)} className="rounded p-1 hover:bg-[var(--n-hover)]"><ChevronRight size={15} /></button>
       </div>
-      <div className="grid grid-cols-7 border-l border-t border-[var(--n-border)]">
+      <ScrollArea>
+      <div className="grid min-w-[640px] grid-cols-7 border-l border-t border-[var(--n-border)]">
         {WEEKDAYS.map((d) => <div key={d} className="border-b border-r border-[var(--n-border)] px-1.5 py-1 text-right text-xs text-[var(--n-text-faint)]">{d}</div>)}
         {cells.map((d) => {
           const k = iso(d);
@@ -481,18 +507,24 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
                   className="rounded p-0.5 opacity-0 hover:bg-[var(--n-hover)] group-hover:opacity-100"><Plus size={12} /></button>
                 <span className={`ml-auto grid h-5 min-w-5 place-items-center rounded-full text-xs ${k === today ? "bg-red-500 text-white" : "text-[var(--n-text-muted)]"}`}>{d.getDate()}</span>
               </div>
-              {(byDay.get(k) ?? []).map((r) => (
+              {(byDay.get(k) ?? []).slice(0, opened.includes(k) ? undefined : CALENDAR_LIMIT).map((r) => (
                 r.id === fresh
                   ? <QuickTitle key={r.id} row={r} db={db} onDone={() => setFresh(null)} className="mt-0.5 text-xs" />
                   : <button key={r.id} type="button" draggable title={titleOf(r)} onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/row", r.id); }} onClick={() => open(r.id)}
-                      className="mt-0.5 block w-full cursor-grab truncate rounded border border-[var(--n-border)] bg-[var(--n-bg)] px-1 py-0.5 text-left text-xs shadow-sm hover:bg-[var(--n-hover)]">
+                      className={`mt-0.5 block w-full cursor-grab truncate rounded border bg-[var(--n-bg)] px-1 py-0.5 text-left text-xs shadow-sm hover:bg-[var(--n-hover)] ${isDone(r, db.schema) ? "border-[var(--n-border)] text-[var(--n-text-faint)] line-through" : /red/.test(dueTone(col, r, db.ctx)) ? "border-red-500/60" : "border-[var(--n-border)]"}`}>
                       {r.icon} {titleOf(r)}
                     </button>
               ))}
+              {(byDay.get(k)?.length ?? 0) > CALENDAR_LIMIT && !opened.includes(k) && (
+                <button type="button" onClick={() => setOpened((o) => [...o, k])} className="mt-0.5 block w-full rounded px-1 text-left text-xs text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">
+                  +{byDay.get(k)!.length - CALENDAR_LIMIT} mais
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+      </ScrollArea>
     </div>
   );
 }

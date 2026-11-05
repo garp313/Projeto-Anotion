@@ -9,6 +9,8 @@ import type { Ctx, RelatedDb } from "./values";
 import { addMirror, detachMirror, mirrorIsValid, removeMirror, repairRelations } from "./relations";
 import { spawnNextOccurrence } from "@/lib/tasks";
 import { memberName, scheduleEmails, useMembers, type Member } from "@/lib/collab";
+import { setRowProp } from "@/lib/rowProps";
+import { toast } from "@/lib/toast";
 
 const BASE_COLS = "id,workspace_id,parent_id,title,icon,cover,position,is_database,row_properties,created_at,updated_at";
 const FULL_COLS = `${BASE_COLS},created_by,last_edited_by,seq`;
@@ -54,8 +56,9 @@ export function useDatabase(databaseId: string) {
   }, [supabase]);
 
   const members = useMembers().data ?? NO_MEMBERS;
-  const page = useQuery({ queryKey: pageKey, queryFn: () => fetchPage(databaseId), staleTime: Infinity });
-  const rowsQuery = useQuery({ queryKey: rowsKey, queryFn: () => fetchRows(databaseId) });
+  // O time edita ao mesmo tempo: atualiza sozinho enquanto a aba está visível.
+  const page = useQuery({ queryKey: pageKey, queryFn: () => fetchPage(databaseId), staleTime: Infinity, refetchInterval: 30_000 });
+  const rowsQuery = useQuery({ queryKey: rowsKey, queryFn: () => fetchRows(databaseId), refetchInterval: 20_000, refetchOnWindowFocus: true });
 
   const schema = useMemo(() => schemaOf(page.data), [page.data]);
   const fallbackView = useRef<DatabaseViewConfig | null>(null);
@@ -117,6 +120,15 @@ export function useDatabase(databaseId: string) {
     },
     [qc, pageKey, supabase, databaseId]
   );
+  /** Ajuste do próprio banco (visões, modelos), sem regravar o que outra pessoa acabou de mudar. */
+  const patchProp = useCallback(
+    async (key: string, value: unknown) => {
+      const props = { ...qc.getQueryData<PageFull>(pageKey)?.row_properties, [key]: value };
+      qc.setQueryData<PageFull>(pageKey, (old) => (old ? { ...old, row_properties: props } : old));
+      await setRowProp(supabase, databaseId, key, value, props);
+    },
+    [qc, pageKey, supabase, databaseId]
+  );
 
   const saveSchema = useCallback((next: ColumnSchema[]) => patchPage({ database_schema: next }), [patchPage]);
   const saveColumn = useCallback(
@@ -124,11 +136,8 @@ export function useDatabase(databaseId: string) {
     [saveSchema, schema]
   );
   const setViews = useCallback(
-    (next: DatabaseViewConfig[]) => {
-      const props = qc.getQueryData<PageFull>(pageKey)?.row_properties;
-      return patchPage({ row_properties: { ...props, __views: next } });
-    },
-    [patchPage, qc, pageKey]
+    (next: DatabaseViewConfig[]) => patchProp("__views", next),
+    [patchProp]
   );
   const saveView = useCallback(
     (v: DatabaseViewConfig) => setViews(views.map((x) => (x.id === v.id ? v : x))),
@@ -165,14 +174,14 @@ export function useDatabase(databaseId: string) {
     mutationFn: async ({ rowId, colId, value }: { rowId: string; colId: string; value: any }) => {
       const col = schema.find((c) => c.id === colId);
       if (col?.type === "title") {
-        const { error } = await supabase.from("pages").update({ title: value }).eq("id", rowId);
+        const { data, error } = await supabase.from("pages").update({ title: value }).eq("id", rowId).select("id");
         if (error) throw error;
+        if (data && !data.length) throw Object.assign(new Error("sem permissão"), { code: "42501" });
         return;
       }
-      // onMutate já aplicou a mudança: o cache tem o estado mais novo de todas as células.
+      // Só esta propriedade: gravar a linha inteira desfazia o que um colega acabou de mudar.
       const row = qc.getQueryData<DatabaseRow[]>(rowsKey)?.find((r) => r.id === rowId);
-      const { error } = await supabase.from("pages").update({ row_properties: row?.row_properties ?? { [colId]: value } }).eq("id", rowId);
-      if (error) throw error;
+      await setRowProp(supabase, rowId, colId, value, row?.row_properties ?? { [colId]: value });
     },
     onMutate: async ({ rowId, colId, value }) => {
       await qc.cancelQueries({ queryKey: rowsKey });
@@ -215,24 +224,39 @@ export function useDatabase(databaseId: string) {
       await Promise.all((data ?? []).map((t) => {
         const cur: string[] = t.row_properties?.[col.relationSyncProp!] ?? [];
         const next = after.includes(t.id) ? [...new Set([...cur, rowId])] : cur.filter((id) => id !== rowId);
-        return supabase.from("pages").update({ row_properties: { ...t.row_properties, [col.relationSyncProp!]: next } }).eq("id", t.id);
+        return setRowProp(supabase, t.id, col.relationSyncProp!, next, { ...t.row_properties, [col.relationSyncProp!]: next });
       }));
       qc.invalidateQueries({ queryKey: ["database_rows", col.relationDatabaseId] });
     },
   });
 
-  const removeRow = useMutation({
-    mutationFn: async (rowId: string) => {
-      const { error } = await supabase.from("pages").update({ is_archived: true }).eq("id", rowId);
+  const removeRows = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { data, error } = await supabase.from("pages").update({ is_archived: true }).in("id", ids).select("id");
       if (error) throw error;
+      if (data && !data.length) throw Object.assign(new Error("sem permissão"), { code: "42501" });
     },
-    onMutate: async (rowId) => {
+    onMutate: async (ids) => {
       await qc.cancelQueries({ queryKey: rowsKey });
       const prev = qc.getQueryData<DatabaseRow[]>(rowsKey);
-      setRows((rows) => rows.filter((r) => r.id !== rowId));
+      setRows((rows) => rows.filter((r) => !ids.includes(r.id)));
       return { prev };
     },
     onError: (_e, _v, c) => { if (c?.prev) qc.setQueryData(rowsKey, c.prev); },
+    onSuccess: (_d, ids) => {
+      qc.invalidateQueries({ queryKey: ["pages"] });
+      toast({
+        message: ids.length > 1 ? `${ids.length} itens foram para a lixeira.` : "Item foi para a lixeira.",
+        action: {
+          label: "Desfazer",
+          run: async () => {
+            await supabase.from("pages").update({ is_archived: false }).in("id", ids);
+            qc.invalidateQueries({ queryKey: rowsKey });
+            qc.invalidateQueries({ queryKey: ["pages"] });
+          },
+        },
+      });
+    },
   });
 
   const moveRow = useMutation({
@@ -297,17 +321,13 @@ export function useDatabase(databaseId: string) {
 
   /** Liga a sincronização do prazo e envia as tarefas que já têm data. */
   const setCalendarSync = async (colId: string | null) => {
-    const props = qc.getQueryData<PageFull>(pageKey)?.row_properties;
-    await patchPage({ row_properties: { ...props, __calendarSync: colId } });
+    await patchProp("__calendarSync", colId);
     if (!colId) return;
     for (const r of rowsQuery.data ?? []) if (r.row_properties?.[colId]) await pushToCalendar(r.id);
   };
 
   const templates: RowTemplate[] = page.data?.row_properties?.__templates ?? [];
-  const setTemplates = (next: RowTemplate[]) => {
-    const props = qc.getQueryData<PageFull>(pageKey)?.row_properties;
-    return patchPage({ row_properties: { ...props, __templates: next } });
-  };
+  const setTemplates = (next: RowTemplate[]) => patchProp("__templates", next);
   /** Guarda propriedades e conteúdo da linha para criar outras iguais pelo botão Novo. */
   const saveTemplate = async (row: DatabaseRow) => {
     const { data } = await supabase.from("pages").select("content_json").eq("id", row.id).single();
@@ -340,7 +360,8 @@ export function useDatabase(databaseId: string) {
     templates, setTemplates, saveTemplate, importRows, setCalendarSync,
     addRow: (init?: NewRow) => addRow.mutateAsync(init ?? {}),
     setValue: (rowId: string, colId: string, value: any) => setValue.mutate({ rowId, colId, value }),
-    removeRow: (rowId: string) => removeRow.mutate(rowId),
+    removeRow: (rowId: string) => removeRows.mutate([rowId]),
+    removeRows: (ids: string[]) => removeRows.mutate(ids),
     moveRow: (rowId: string, position: number) => moveRow.mutate({ rowId, position }),
     duplicateRow,
   };

@@ -9,7 +9,7 @@ import { Bookmark, Calendar, Code2, FileText, Link2, ListChecks, ListTree, Minus
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { schema } from "./blocks";
-import { useAutoSave } from "@/lib/hooks/useAutoSave";
+import { useAutoSave, type SaveStatus } from "@/lib/hooks/useAutoSave";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_SCHEMA } from "@/components/database/types";
 import type { PageRow } from "@/lib/hooks/usePageTree";
@@ -34,7 +34,7 @@ const DICTIONARY = {
   placeholders: { ...pt.placeholders, default: "Digite algo ou “/” para ver os comandos", emptyDocument: "Digite algo ou “/” para ver os comandos" },
 };
 
-type Props = { pageId: string; initialContent: any[] | null; onStatus?: (s: "saved" | "saving" | "error") => void };
+type Props = { pageId: string; initialContent: any[] | null; onStatus?: (s: SaveStatus) => void };
 
 export function BlockEditor({ pageId, initialContent, onStatus }: Props) {
   const { save, status } = useAutoSave(pageId, 800);
@@ -154,7 +154,7 @@ export function BlockEditor({ pageId, initialContent, onStatus }: Props) {
       <BlockNoteView
         editor={editor}
         slashMenu={false}
-        theme={typeof window !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"}
+        theme={typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light"}
         onChange={() => save(editor.document)}
       >
         <SuggestionMenuController triggerCharacter="/" getItems={getItems} />

@@ -61,6 +61,18 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
     },
     onError: (e: any) => setNote(e?.code === "42501" ? e.message : "Não foi possível convidar."),
   });
+  const changeRole = useMutation({
+    mutationFn: async ({ a, role: next }: { a: Access; role: Role }) => {
+      const q = a.table === "invites"
+        ? supabase.from("invites").update({ role: next }).eq("id", a.inviteId!)
+        : a.table === "page_shares"
+          ? supabase.from("page_shares").update({ role: next }).eq("page_id", pageId).eq("user_id", a.userId!)
+          : supabase.from("workspace_members").update({ role: next }).eq("workspace_id", workspaceId).eq("user_id", a.userId!);
+      const { error } = await q;
+      if (error) throw error;
+    },
+    onSuccess: refresh,
+  });
   const revoke = useMutation({
     mutationFn: async (a: Access) => {
       const q = a.table === "invites"
@@ -130,8 +142,9 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
           <div key={a.key} className="flex items-center gap-2 rounded px-1 py-1">
             <span className="min-w-0 flex-1">
               <span title={a.label} className="block truncate text-sm">{a.label}</span>
-              <span className="block text-[11px] text-[var(--n-text-faint)]">{a.note} · {label(a.role)}</span>
+              <span className="block text-[11px] text-[var(--n-text-faint)]">{a.note}</span>
             </span>
+            <Choice label={`Papel de ${a.label}`} width={150} value={a.role} options={ROLES} onChange={(next) => changeRole.mutate({ a, role: next })} />
             <button type="button" aria-label={`Remover acesso de ${a.label}`} onClick={() => revoke.mutate(a)} className="rounded p-1 hover:bg-[var(--n-hover)]"><X size={13} /></button>
           </div>
         ))}

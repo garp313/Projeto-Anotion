@@ -34,7 +34,8 @@ function List({ pageId, onRestored }: { pageId: string; onRestored: () => void }
       qc.setQueryData<PageFull>(["page", pageId], (old) => (old ? { ...old, title: v.title, content_json: v.content_json } : old));
       qc.invalidateQueries({ queryKey: ["pages"] });
       qc.invalidateQueries({ queryKey: ["versions", pageId] });
-      onRestored();
+      // A restauração muda a versão do texto: sem buscar a nova, o próximo salvamento daria conflito.
+      void qc.refetchQueries({ queryKey: ["page", pageId] }).then(onRestored);
     },
   });
   if (notMigrated(versions.error as any)) return <p className="p-2 text-xs text-[var(--n-text-muted)]">O histórico fica disponível depois de rodar a migration 0003.</p>;

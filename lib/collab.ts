@@ -23,6 +23,20 @@ export function useMembers() {
   });
 }
 
+/** Papel no time. O dono do workspace não aparece como membro: vale como editor. */
+export function useMyRole() {
+  return useQuery({
+    queryKey: ["my-role"],
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<"editor" | "viewer"> => {
+      const supabase = createClient();
+      const { data: auth } = await supabase.auth.getSession();
+      const { data } = await supabase.from("workspace_members").select("role").eq("user_id", auth.session?.user.id ?? "").maybeSingle();
+      return data?.role === "viewer" ? "viewer" : "editor";
+    },
+  });
+}
+
 export const memberName = (m: Member) => m.name || m.email;
 
 export function useUnreadCount() {

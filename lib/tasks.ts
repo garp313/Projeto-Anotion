@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { setRowProp } from "@/lib/rowProps";
 import type { ColumnSchema, DatabaseRow, DateValue, PersonValue, Repeat, SelectOption } from "@/components/database/types";
 import { COLORS, DEFAULT_SCHEMA, defaultView } from "@/components/database/types";
 import { asDate } from "@/components/database/values";
@@ -76,9 +77,7 @@ export async function loadTasks(client?: ReturnType<typeof createClient>): Promi
 
 export async function setTaskStatus(t: Task, optionId: string) {
   if (!t.statusColId) return;
-  const { error } = await createClient().from("pages")
-    .update({ row_properties: { ...t.rowProperties, [t.statusColId]: optionId } }).eq("id", t.id);
-  if (error) throw error;
+  await setRowProp(createClient(), t.id, t.statusColId, optionId, { ...t.rowProperties, [t.statusColId]: optionId });
   const finishing = t.statusOptions.find((o) => o.id === optionId)?.group === "complete" && t.statusOption?.group !== "complete";
   if (finishing) await spawnNextOccurrence(t.row, t.schema);
 }

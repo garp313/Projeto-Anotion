@@ -9,6 +9,8 @@ import { loadTasks, type Task } from "@/lib/tasks";
 import { formatDateValue } from "@/components/database/values";
 import { EmailsPanel } from "./EmailsPanel";
 
+/** A lista completa fica em Minhas tarefas: aqui os prazos não podem esconder as notificações. */
+const ALERTS_SHOWN = 5;
 const ICON = { assigned: UserPlus, mention: AtSign, comment: MessageSquare, status: CircleDot };
 const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -89,21 +91,8 @@ export function Inbox() {
       {tab === "emails" ? <EmailsPanel /> : <>
       {notMigrated(list.error as any) && <p className="mb-4 text-sm text-[var(--n-text-muted)]">Avisos de atribuição, menção e comentário ficam disponíveis depois de rodar a migration 0003.</p>}
 
-      {alerts.length > 0 && (
-        <section aria-label="Prazos" className="mb-6">
-          <h2 className="mb-1 text-sm font-semibold">Prazos</h2>
-          {alerts.map(({ task, alert }) => (
-            <Link key={task.id} href={`/workspace/${task.id}`} className="flex items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-[var(--n-hover)]">
-              <AlarmClock size={15} className={`shrink-0 ${alert!.tone}`} />
-              <span className="min-w-0 flex-1 truncate">{task.title || "Sem título"}</span>
-              <span className={`shrink-0 text-xs ${alert!.tone}`}>{alert!.label} · {formatDateValue(task.due)}</span>
-            </Link>
-          ))}
-        </section>
-      )}
-
       {list.data && list.data.length > 0 && (
-        <section aria-label="Notificações">
+        <section aria-label="Notificações" className="mb-6">
           <h2 className="mb-1 text-sm font-semibold">Notificações</h2>
           {list.data.map((n) => {
             const Icon = ICON[n.kind];
@@ -121,6 +110,20 @@ export function Inbox() {
               ? <Link key={n.id} href={`/workspace/${n.page_id}`} onClick={mark} className={cls}>{body}</Link>
               : <button key={n.id} type="button" onClick={mark} className={`${cls} w-full text-left`}>{body}</button>;
           })}
+        </section>
+      )}
+
+      {alerts.length > 0 && (
+        <section aria-label="Prazos" className="mb-6">
+          <h2 className="mb-1 text-sm font-semibold">Prazos</h2>
+          {alerts.slice(0, ALERTS_SHOWN).map(({ task, alert }) => (
+            <Link key={task.id} href={`/workspace/${task.id}`} className="flex items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-[var(--n-hover)]">
+              <AlarmClock size={15} className={`shrink-0 ${alert!.tone}`} />
+              <span className="min-w-0 flex-1 truncate">{task.title || "Sem título"}</span>
+              <span className={`shrink-0 text-xs ${alert!.tone}`}>{alert!.label} · {formatDateValue(task.due)}</span>
+            </Link>
+          ))}
+          {alerts.length > ALERTS_SHOWN && <Link href="/tarefas" className="mt-1 block px-1 text-xs text-[var(--n-accent)] hover:underline">Ver todos os {alerts.length} prazos em Minhas tarefas</Link>}
         </section>
       )}
 

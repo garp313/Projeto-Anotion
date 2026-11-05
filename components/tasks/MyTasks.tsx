@@ -13,6 +13,8 @@ import { formatDateValue } from "@/components/database/values";
 const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+const urgency = (t: Task) => (/alta|high/i.test(t.priority?.value ?? "") ? 2 : /m[eé]dia|medium/i.test(t.priority?.value ?? "") ? 1 : 0);
+
 type Bucket = { id: string; label: string; tone?: string; tasks: Task[] };
 
 function bucketize(tasks: Task[]): Bucket[] {
@@ -35,7 +37,8 @@ function bucketize(tasks: Task[]): Bucket[] {
     else if (due <= weekEnd) at("week").push(t);
     else at("later").push(t);
   }
-  buckets.forEach((b) => b.tasks.sort((x, y) => (x.due?.start ?? "").localeCompare(y.due?.start ?? "")));
+  // Dentro do grupo, o mais urgente primeiro; em prioridade igual, o prazo mais antigo.
+  buckets.forEach((b) => b.tasks.sort((x, y) => urgency(y) - urgency(x) || (x.due?.start ?? "").localeCompare(y.due?.start ?? "")));
   return buckets.filter((b) => b.tasks.length);
 }
 
@@ -154,7 +157,7 @@ export function MyTasks() {
                   </button>
                 )}
                 <Link href={`/workspace/${t.id}`} className="min-w-0 flex-1 truncate text-sm">{t.icon} {t.title || "Sem título"}</Link>
-                <span className="hidden max-w-[120px] shrink-0 truncate text-xs text-[var(--n-text-faint)] sm:inline" title={t.databaseTitle}>{t.databaseTitle}</span>
+                <span className="hidden max-w-[120px] shrink-0 truncate text-xs text-[var(--n-text-faint)] sm:inline" title={t.projects[0] ?? t.databaseTitle}>{t.projects[0] ?? t.databaseTitle}</span>
                 {t.priority && <OptionTag option={t.priority} />}
                 <StatusPicker task={t} onPick={(id) => changeStatus.mutate({ task: t, id })} />
                 {t.due && <span className={`shrink-0 text-xs ${b.tone ?? "text-[var(--n-text-muted)]"}`}>{formatDateValue(t.due)}</span>}

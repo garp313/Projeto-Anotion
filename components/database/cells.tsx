@@ -13,11 +13,19 @@ import { OptionTag, Pop, fieldClass, menuItem } from "./ui";
 type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean; dense?: boolean };
 
 const cellBox = "block min-h-[30px] w-full min-w-0 overflow-hidden px-2 py-1 text-left text-sm";
-const Empty = ({ compact }: { compact?: boolean }) =>
-  compact ? null : <span className="text-[var(--n-text-faint)]">Vazio</span>;
+// Na tabela, "Vazio" só aparece ao passar o mouse: repetido em toda linha, poluía a leitura.
+const Empty = ({ compact, dense }: { compact?: boolean; dense?: boolean }) =>
+  compact ? null : <span className={`text-[var(--n-text-faint)] ${dense ? "opacity-0 group-hover:opacity-100" : ""}`}>Vazio</span>;
+
+/** Cor fixa por nome: letras iguais em cinza não permitiam distinguir as pessoas. */
+export const avatarColor = (name: string) => {
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${hash} 45% 42%)`;
+};
 
 /** Texto, número, URL, e-mail e telefone: edita localmente e grava ao sair do campo. */
-function TextField({ col, row, db, compact }: CellProps) {
+function TextField({ col, row, db, compact, dense }: CellProps) {
   const stored = rawValue(col, row, db.ctx);
   const [draft, setDraft] = useState<string | null>(null);
   const value = draft ?? (stored ?? "");
@@ -38,7 +46,7 @@ function TextField({ col, row, db, compact }: CellProps) {
   if (col.type === "number" && draft === null) {
     return (
       <button type="button" onClick={() => setDraft(String(stored ?? ""))} className={`${cellBox} ${compact ? "" : "text-right"}`}>
-        {stored === null || stored === undefined ? <Empty compact={compact} /> : formatNumber(stored, col.numberFormat)}
+        {stored === null || stored === undefined ? <Empty compact={compact} dense={dense} /> : formatNumber(stored, col.numberFormat)}
       </button>
     );
   }
@@ -46,7 +54,7 @@ function TextField({ col, row, db, compact }: CellProps) {
     <div className="group/cell relative flex items-center">
       <input
         type={type} value={value} autoFocus={col.type === "number"} aria-label={col.name}
-        placeholder={compact ? "" : "Vazio"}
+        placeholder={compact || dense ? "" : "Vazio"}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
@@ -67,7 +75,7 @@ function TextField({ col, row, db, compact }: CellProps) {
 
 const GROUP_LABEL: Record<StatusGroup, string> = { todo: "A fazer", in_progress: "Em andamento", complete: "Concluído" };
 
-function SelectField({ col, row, db, compact }: CellProps) {
+function SelectField({ col, row, db, compact, dense }: CellProps) {
   const multi = col.type === "multi_select";
   const raw = rawValue(col, row, db.ctx);
   const selected: string[] = multi ? raw ?? [] : raw ? [raw] : [];
@@ -108,7 +116,7 @@ function SelectField({ col, row, db, compact }: CellProps) {
       open={open} onOpenChange={setOpen} triggerClass={cellBox}
       trigger={current.length
         ? <span className="flex flex-wrap gap-1">{current.map((o) => <OptionTag key={o.id} option={o} />)}</span>
-        : <Empty compact={compact} />}
+        : <Empty compact={compact} dense={dense} />}
     >
       <input
         autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ou criar opção…" className={`${fieldClass} mb-1`}
@@ -138,12 +146,12 @@ function SelectField({ col, row, db, compact }: CellProps) {
   );
 }
 
-function DateField({ col, row, db, compact }: CellProps) {
+function DateField({ col, row, db, compact, dense }: CellProps) {
   const value = asDate(rawValue(col, row, db.ctx));
   const [open, setOpen] = useState(false);
   return (
     <Pop open={open} onOpenChange={setOpen} triggerClass={cellBox} width={280}
-      trigger={value ? <span title={formatDateValue(value)} className={`block truncate ${dueTone(col, row, db.ctx)}`}>{formatDateValue(value)}</span> : <Empty compact={compact} />}>
+      trigger={value ? <span title={formatDateValue(value)} className={`block truncate ${dueTone(col, row, db.ctx)}`}>{formatDateValue(value)}</span> : <Empty compact={compact} dense={dense} />}>
       <DatePicker value={value} onChange={(v) => db.setValue(row.id, col.id, v)} onDone={() => setOpen(false)} />
     </Pop>
   );
@@ -168,7 +176,7 @@ function PersonField({ col, row, db, compact, dense }: CellProps) {
   };
   const shown = known.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
   const avatar = (name: string) => (
-    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--n-active)] text-[10px] font-medium uppercase">{name[0]}</span>
+    <span style={{ background: avatarColor(name) }} className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-medium uppercase text-white">{name[0]}</span>
   );
   return (
     <Pop
@@ -181,7 +189,7 @@ function PersonField({ col, row, db, compact, dense }: CellProps) {
           </span>
         : people.length
         ? <span className="flex min-w-0 flex-wrap gap-1.5">{people.map((p) => <span key={p.name} title={p.name} className="flex min-w-0 max-w-full items-center gap-1">{avatar(p.name)}<span className="min-w-0 truncate">{p.name}</span></span>)}</span>
-        : <Empty compact={compact} />}
+        : <Empty compact={compact} dense={dense} />}
     >
       <input
         autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nome ou e-mail…" className={`${fieldClass} mb-1`}
@@ -200,7 +208,7 @@ function PersonField({ col, row, db, compact, dense }: CellProps) {
   );
 }
 
-function FilesField({ col, row, db, compact }: CellProps) {
+function FilesField({ col, row, db, compact, dense }: CellProps) {
   const files: FileValue[] = rawValue(col, row, db.ctx) ?? [];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,7 +243,7 @@ function FilesField({ col, row, db, compact }: CellProps) {
     <Pop triggerClass={cellBox} width={300}
       trigger={files.length
         ? <span className="flex flex-wrap gap-1">{files.map((f) => <span key={f.name} className="truncate rounded bg-[var(--n-hover)] px-1.5 text-xs">{f.name}</span>)}</span>
-        : <Empty compact={compact} />}>
+        : <Empty compact={compact} dense={dense} />}>
       {files.map((f) => (
         <div key={f.name} className="flex items-center gap-1">
           <button type="button" onClick={() => open(f)} className={`${menuItem} min-w-0 flex-1`}><span className="truncate">{f.name}</span></button>
@@ -285,7 +293,10 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   };
   return (
     <Pop triggerClass={cellBox}
-      trigger={chosen.length
+      trigger={chosen.length > (dense ? 1 : 6)
+        // Lista longa vira contagem: 100 chips empurravam o resto da página para baixo.
+        ? <span className="text-sm text-[var(--n-text-muted)]">{chosen.length} itens</span>
+        : chosen.length
         ? <span className={`flex min-w-0 gap-1 ${dense ? "overflow-hidden" : "flex-wrap"}`}>
             {chosen.map((r) => (
               <span key={r.id} role="link" title={label(r)}
@@ -293,7 +304,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
                 className="min-w-0 max-w-full shrink-0 cursor-pointer truncate rounded bg-[var(--n-hover)] px-1.5 text-sm hover:bg-[var(--n-active)]">{label(r)}</span>
             ))}
           </span>
-        : <Empty compact={compact} />}>
+        : <Empty compact={compact} dense={dense} />}>
       <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ou criar…" className={`${fieldClass} mb-1`}
         onKeyDown={(e) => { if (e.key === "Enter" && typed && !shown.length) { e.preventDefault(); void createNew(); } }} />
       {shown.map((r) => (
@@ -323,12 +334,12 @@ export function ChecklistProgress({ items }: { items: ChecklistItem[] }) {
   );
 }
 
-function ChecklistField({ col, row, db, compact }: CellProps) {
+function ChecklistField({ col, row, db, compact, dense }: CellProps) {
   const items: ChecklistItem[] = rawValue(col, row, db.ctx) ?? [];
   const [text, setText] = useState("");
   const write = (next: ChecklistItem[]) => db.setValue(row.id, col.id, next);
   return (
-    <Pop triggerClass={cellBox} width={300} trigger={items.length ? <ChecklistProgress items={items} /> : <Empty compact={compact} />}>
+    <Pop triggerClass={cellBox} width={300} trigger={items.length ? <ChecklistProgress items={items} /> : <Empty compact={compact} dense={dense} />}>
       {items.map((it) => (
         <div key={it.id} className="flex items-center gap-1">
           <label className={`${menuItem} min-w-0 flex-1`}>
@@ -362,14 +373,14 @@ function TitleField({ col, row, db, autoFocus }: CellProps) {
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== row.title && db.setValue(row.id, col.id, draft)}
       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-      className="w-full min-w-0 bg-transparent px-2 py-1 text-sm font-medium outline-none placeholder:text-[var(--n-text-faint)]"
+      className="w-full min-w-0 truncate bg-transparent px-2 py-1 text-sm font-medium outline-none placeholder:text-[var(--n-text-faint)]"
     />
   );
 }
 
 /** Editor da propriedade, usado em tabela, cartões e na página da linha. */
 export function PropertyValue(props: CellProps) {
-  const { col, row, db, compact } = props;
+  const { col, row, db, compact, dense } = props;
   if (READ_ONLY.includes(col.type)) {
     const v = rawValue(col, row, db.ctx);
     const err = v && typeof v === "object" && "__error" in v ? (v.__error as string) : null;
@@ -386,7 +397,7 @@ export function PropertyValue(props: CellProps) {
     }
     return (
       <span title={err ?? undefined} className={`${cellBox} ${err ? "text-red-500" : "text-[var(--n-text-muted)]"}`}>
-        {text || <Empty compact={compact} />}
+        {text || <Empty compact={compact} dense={dense} />}
       </span>
     );
   }
@@ -419,7 +430,12 @@ export function PropertyPreview({ col, row, db }: Omit<CellProps, "compact">) {
     return opts.length ? <span className="flex flex-wrap gap-1">{opts.map((o) => <OptionTag key={o.id} option={o} />)}</span> : null;
   }
   if (col.type === "checklist") return (v as ChecklistItem[]).length ? <ChecklistProgress items={v} /> : null;
+  if (col.type === "person") {
+    const people = (v ?? []) as PersonValue[];
+    if (!people.length) return null;
+    return <span title={people.map((p) => p.name).join(", ")} className="block max-w-full truncate text-xs text-[var(--n-text-muted)]">{people[0].name}{people.length > 1 ? ` +${people.length - 1}` : ""}</span>;
+  }
   const text = displayText(col, v, db.ctx);
   // Duas cores na mesma classe disputam pela ordem do CSS: o alerta de prazo podia perder.
-  return text ? <span className={`truncate text-xs ${dueTone(col, row, db.ctx) || "text-[var(--n-text-muted)]"}`}>{text}</span> : null;
+  return text ? <span className={`block max-w-full truncate text-xs ${dueTone(col, row, db.ctx) || "text-[var(--n-text-muted)]"}`}>{text}</span> : null;
 }

@@ -3,6 +3,9 @@
 @source "../components";
 @source "../lib";
 
+/* O tema vem de data-theme em <html>, definido antes da primeira pintura. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /* Tokens do Notion (claro/escuro) */
 :root {
   --n-bg: #ffffff;
@@ -11,23 +14,22 @@
   --n-active: rgba(55, 53, 47, 0.12);
   --n-text: #37352f;
   --n-text-muted: rgba(55, 53, 47, 0.65);
-  --n-text-faint: rgba(55, 53, 47, 0.4);
+  --n-text-faint: rgba(55, 53, 47, 0.5);
   --n-border: rgba(55, 53, 47, 0.09);
   --n-callout: #f1f1ef;
   --n-accent: #2383e2;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
+    color-scheme: dark;
     --n-bg: #191919;
     --n-bg-sidebar: #202020;
     --n-hover: rgba(255, 255, 255, 0.055);
     --n-active: rgba(255, 255, 255, 0.09);
     --n-text: rgba(255, 255, 255, 0.81);
-    --n-text-muted: rgba(255, 255, 255, 0.46);
-    --n-text-faint: rgba(255, 255, 255, 0.28);
+    --n-text-muted: rgba(255, 255, 255, 0.6);
+    --n-text-faint: rgba(255, 255, 255, 0.42);
     --n-border: rgba(255, 255, 255, 0.094);
     --n-callout: #252525;
-  }
 }
 
 html, body { height: 100%; }

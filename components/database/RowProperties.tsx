@@ -34,7 +34,7 @@ function AddToCalendar({ col, row, db }: { col: ColumnSchema; row: DatabaseRow; 
   return (
     <button type="button" onClick={add} disabled={state === "busy"} title="Adicionar ao Google Agenda"
       className="flex h-[30px] shrink-0 items-center gap-1 rounded px-2 text-xs text-[var(--n-text-faint)] hover:bg-[var(--n-hover)]">
-      <CalendarPlus size={13} /> {state === "error" ? "Erro, tentar de novo" : state === "busy" ? "Enviando…" : "Agenda"}
+      <CalendarPlus size={13} /> {state === "error" ? "Erro, tentar de novo" : state === "busy" ? "Enviando…" : "Enviar à agenda"}
     </button>
   );
 }
@@ -81,7 +81,7 @@ function FocusBlock({ row, db }: { row: DatabaseRow; db: Db }) {
   }
   return (
     <Pop open={open} onOpenChange={(o) => { setOpen(o); if (o) { setState("idle"); setBusyPeople(null); } }} width={260} align="end" triggerClass={`${toolbarBtn} h-[30px] shrink-0`}
-      trigger={<><Clock size={13} /> {state === "done" ? "Agendado" : "Agendar"}</>}>
+      trigger={<><Clock size={13} /> {state === "done" ? "Bloqueado" : "Bloquear tempo"}</>}>
       <div className="space-y-1 p-1">
         <p className="text-[11px] text-[var(--n-text-faint)]">Bloquear tempo na agenda</p>
         <div className="flex items-center gap-1">
@@ -117,11 +117,16 @@ export function RowProperties({ databaseId, rowId }: { databaseId: string; rowId
   const [adding, setAdding] = useState(false);
   const row = db.rows.find((r) => r.id === rowId);
   if (!row) return null;
+  const status = db.schema.find((c) => c.type === "status");
+  const blocked = /bloque/i.test(status?.options?.find((o) => o.id === row.row_properties?.[status.id])?.value ?? "");
+  const blocker = db.schema.find((c) => c.type === "relation" && /bloqueado por/i.test(c.name));
+  const waiting = blocked && blocker && !(row.row_properties?.[blocker.id] ?? []).length ? blocker : null;
+  const created = row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : null;
   return (
     <section aria-label="Propriedades" className="mb-4 border-b border-[var(--n-border)] pb-3">
       {db.schema.filter((c) => c.type !== "title").map((c) => (
         <div key={c.id} className="flex items-start gap-2 rounded hover:bg-[var(--n-hover)]/40">
-          <span className="flex h-[30px] w-40 shrink-0 items-center gap-1.5 px-1 text-sm text-[var(--n-text-muted)]">
+          <span className="flex h-[30px] w-28 shrink-0 items-center gap-1.5 px-1 text-sm text-[var(--n-text-muted)] sm:w-40">
             <PropIcon type={c.type} /> <span className="truncate">{c.name}</span>
           </span>
           <div className="min-w-0 flex-1"><PropertyValue col={c} row={row} db={db} /></div>
@@ -129,11 +134,13 @@ export function RowProperties({ databaseId, rowId }: { databaseId: string; rowId
           {c.type === "date" && <FocusBlock row={row} db={db} />}
         </div>
       ))}
+      {waiting && <p role="status" className="px-1 py-1 text-xs text-orange-500">Bloqueada: informe em “{waiting.name}” qual item está impedindo.</p>}
       <Pop open={adding} onOpenChange={setAdding} width={230}
         triggerClass="mt-1 flex items-center gap-1.5 rounded px-1 py-1 text-sm text-[var(--n-text-faint)] hover:bg-[var(--n-hover)]"
         trigger={<><Plus size={14} /> Adicionar propriedade</>}>
         <AddPropertyMenu db={db} onDone={() => setAdding(false)} />
       </Pop>
+      {created && <p className="px-1 pt-1 text-xs text-[var(--n-text-faint)]">Criado{row.created_by ? ` por ${db.ctx.userLabel(row.created_by)}` : ""} em {created}</p>}
     </section>
   );
 }

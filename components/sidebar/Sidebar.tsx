@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Bell, CalendarDays, ChevronsLeft, FileText, ListChecks, Menu, Plus, Search } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -34,7 +35,7 @@ export function Sidebar() {
         <div className="px-2 pb-1 pt-3 text-xs font-medium text-[var(--n-text-faint)]">{label}</div>
         {!list.length && <p className="px-2 text-xs text-[var(--n-text-faint)]">{empty}</p>}
         {list.map((p) => (
-          <Link key={p.id} href={`/workspace/${p.id}`} className="flex h-[27px] items-center gap-1.5 rounded px-2 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">
+          <Link key={p.id} href={`/workspace/${p.id}`} className="flex h-[27px] items-center gap-1.5 rounded px-2 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)] max-md:h-10">
             <span className="grid w-5 shrink-0 place-items-center text-[15px]">{p.icon ?? <FileText size={15} />}</span>
             <span className="truncate">{p.title || "Sem título"}</span>
           </Link>
@@ -43,6 +44,23 @@ export function Sidebar() {
     );
   };
   const dragging = useRef(false);
+  // No celular a barra vira gaveta sobre o conteúdo: fixa, ela deixava 130px para a página.
+  const [mobile, setMobile] = useState(false);
+  const pathname = usePathname();
+  useEffect(() => {
+    const query = matchMedia("(max-width: 767px)");
+    const sync = () => setMobile(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  const wasMobile = useRef(false);
+  useEffect(() => {
+    // Recolher é automático no celular: voltar ao tamanho normal não pode deixar a barra escondida.
+    if (mobile) useSidebar.setState({ collapsed: true });
+    else if (wasMobile.current) useSidebar.setState({ collapsed: false });
+    wasMobile.current = mobile;
+  }, [mobile, pathname]);
   useEmptyPageCleanup(pages.data);
 
   // Ctrl+\ (ou Cmd+\)
@@ -63,22 +81,23 @@ export function Sidebar() {
     return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
   }, [setWidth]);
 
-  const row = "flex h-[27px] w-full items-center gap-2 rounded px-2 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]";
+  const row = "flex h-[27px] w-full items-center gap-2 rounded px-2 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)] max-md:h-10";
 
   return (
     <>
       {collapsed && (
         <button aria-label="Abrir barra lateral (Ctrl+\)" onClick={toggle}
-          className="fixed left-2 top-2 z-30 grid h-7 w-7 place-items-center rounded text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">
+          className="fixed left-2 top-2 z-40 grid h-7 w-7 place-items-center rounded text-[var(--n-text-muted)] hover:bg-[var(--n-hover)] max-md:h-9 max-md:w-9">
           <Menu size={16} />
         </button>
       )}
+      {mobile && !collapsed && <button type="button" aria-label="Fechar menu" onClick={toggle} className="fixed inset-0 z-40 bg-black/40" />}
       <aside
         aria-hidden={collapsed}
         style={{ width: collapsed ? 0 : width }}
-        className="relative shrink-0 overflow-hidden bg-[var(--n-bg-sidebar)] transition-[width] duration-200 ease-out data-[drag=true]:transition-none"
+        className="relative shrink-0 overflow-hidden bg-[var(--n-bg-sidebar)] transition-[width] duration-200 ease-out data-[drag=true]:transition-none max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:max-w-[85vw]"
       >
-        <div style={{ width }} className="flex h-full flex-col">
+        <div style={{ width }} className="flex h-full max-w-[85vw] flex-col">
           <div className="flex items-center gap-1 p-1.5 pb-0">
             <div className="min-w-0 flex-1"><WorkspaceSwitcher name={workspace.data?.name} /></div>
             <button aria-label="Fechar barra lateral" onClick={toggle} className="grid h-6 w-6 place-items-center rounded text-[var(--n-text-faint)] hover:bg-[var(--n-hover)]">

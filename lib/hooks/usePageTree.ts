@@ -80,8 +80,10 @@ export function usePageTree() {
 
   const updatePage = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<PageFull> }) => {
-      const { error } = await supabase.from("pages").update(patch).eq("id", id);
+      const { data, error } = await supabase.from("pages").update(patch).eq("id", id).select("id");
       if (error) throw error;
+      // Sem permissão o banco não dá erro: só não altera nenhuma linha.
+      if (data && !data.length) throw Object.assign(new Error("sem permissão"), { code: "42501" });
     },
     // otimista: a sidebar muda no mesmo instante em que o título é digitado
     onMutate: async ({ id, patch }) => {

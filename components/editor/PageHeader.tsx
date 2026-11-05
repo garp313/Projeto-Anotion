@@ -45,6 +45,8 @@ export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWi
     timer.current = setTimeout(() => patch({ title: v }), 300);
   };
 
+  // Em banco de dados os dados são o principal: cabeçalho enxuto para caber mais linhas.
+  const compact = page.is_database;
   const ghost = "inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm text-[var(--n-text-faint)] hover:bg-[var(--n-hover)]";
   const menu = "z-50 rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] shadow-lg";
 
@@ -65,13 +67,13 @@ export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWi
             </Popover.Portal>
           </Popover.Root>
         </div>
-      ) : <div className="h-12" />}
+      ) : <div className={compact ? "h-11" : "h-12"} />}
 
-      <div className={fullWidth ? "w-full px-6 sm:px-12" : "mx-auto w-full max-w-[960px] px-6 sm:px-12"}>
+      <div className={fullWidth ? "w-full px-4 sm:px-12" : "mx-auto w-full max-w-[960px] px-4 sm:px-12"}>
         <div className={`relative ${page.cover ? "-mt-9" : ""}`}>
           {page.icon && (
             <Popover.Root>
-              <Popover.Trigger aria-label="Trocar ícone" className="rounded p-1 text-[72px] leading-none hover:bg-[var(--n-hover)]">{page.icon}</Popover.Trigger>
+              <Popover.Trigger aria-label="Trocar ícone" className={`rounded p-1 leading-none hover:bg-[var(--n-hover)] ${compact ? "text-[32px]" : "text-[56px] sm:text-[72px]"}`}>{page.icon}</Popover.Trigger>
               <Popover.Portal>
                 <Popover.Content align="start" className={`${menu} w-[280px] p-2`}>
                   <div className="grid grid-cols-8 gap-1">
@@ -109,7 +111,7 @@ export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWi
             ref={ta} rows={1} value={title} placeholder="Sem título" aria-label="Título da página"
             onChange={(e) => onTitle(e.target.value.replace(/\n/g, ""))}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); document.querySelector<HTMLElement>(".notion-editor [contenteditable=true]")?.focus(); } }}
-            className="mb-2 block w-full resize-none overflow-hidden border-0 bg-transparent text-[40px] font-bold leading-[1.2] tracking-tight outline-none placeholder:text-[var(--n-text-faint)]"
+            className={`mb-2 block w-full resize-none overflow-hidden border-0 bg-transparent font-bold leading-[1.2] tracking-tight ${compact ? "text-2xl" : "text-3xl sm:text-[40px]"} outline-none placeholder:text-[var(--n-text-faint)]`}
           />
         </div>
       </div>

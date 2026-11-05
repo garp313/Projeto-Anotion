@@ -148,7 +148,9 @@ export async function pullChanges(token: string, userId: string) {
       const props = page?.row_properties ?? {};
       const cur = props[link.prop];
       if (cur?.start && same(cur, incoming)) continue;
-      await admin.from("pages").update({ row_properties: { ...props, [link.prop]: { ...cur, ...incoming } } }).eq("id", link.page_id);
+      const { error } = await admin.rpc("set_row_prop", { p_page: link.page_id, p_key: link.prop, p_value: { ...cur, ...incoming } });
+      // Banco sem a migration 0009 ainda.
+      if (error) await admin.from("pages").update({ row_properties: { ...props, [link.prop]: { ...cur, ...incoming } } }).eq("id", link.page_id);
       changed++;
     }
     pageToken = res.nextPageToken;

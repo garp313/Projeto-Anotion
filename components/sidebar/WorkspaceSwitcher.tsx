@@ -5,6 +5,14 @@ import { ChevronsUpDown, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+const THEMES = [["light", "Claro"], ["dark", "Escuro"], ["system", "Igual ao sistema"]] as const;
+
+function applyTheme(theme: "light" | "dark" | "system") {
+  try { localStorage.setItem("theme", theme); } catch { /* armazenamento indisponível */ }
+  const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = theme === "system" ? system : theme;
+}
+
 export function WorkspaceSwitcher({ name = "Workspace" }: { name?: string }) {
   const router = useRouter();
   const [account, setAccount] = useState<string | null>(null);
@@ -28,6 +36,11 @@ export function WorkspaceSwitcher({ name = "Workspace" }: { name?: string }) {
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Content align="start" sideOffset={4} className="z-50 min-w-[220px] rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] p-1 text-sm shadow-lg">
+          <p className="px-2 pb-1 pt-1 text-[11px] text-[var(--n-text-faint)]">Tema</p>
+          {THEMES.map(([value, label]) => (
+            <Menu.Item key={value} onSelect={() => applyTheme(value)} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--n-hover)]">{label}</Menu.Item>
+          ))}
+          <Menu.Separator className="my-1 h-px bg-[var(--n-border)]" />
           <Menu.Item onSelect={signOut} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--n-hover)]">
             <LogOut size={14} /> Sair
           </Menu.Item>

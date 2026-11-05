@@ -5,8 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronsLeftRight, Table, Kanban, List, ListChecks, MoreHorizontal, Star } from "lucide-react";
-import { fetchPage, usePageTree } from "@/lib/hooks/usePageTree";
-import type { SaveStatus } from "@/lib/hooks/useAutoSave";
+import { fetchPage, usePageTree, type PageFull } from "@/lib/hooks/usePageTree";
+import { FORCE_SAVE, type SaveStatus } from "@/lib/hooks/useAutoSave";
+import { useMyRole } from "@/lib/collab";
+import { setRowProp } from "@/lib/rowProps";
+import { createClient } from "@/lib/supabase/client";
 import { databasePatch, type ViewType } from "@/components/database/types";
 import { createTaskTemplate } from "@/lib/tasks";
 import { pushRecent, useFavorites } from "@/lib/hooks/useFavorites";
@@ -26,7 +29,7 @@ const DatabaseView = dynamic(() => import("@/components/database/DatabaseView").
 const RelatedPanel = dynamic(() => import("@/components/database/RelatedPanel").then((m) => m.RelatedPanel), { ssr: false });
 const RowProperties = dynamic(() => import("@/components/database/RowProperties").then((m) => m.RowProperties), { ssr: false });
 
-const LABEL: Record<SaveStatus, string> = { saved: "Salvo", saving: "Salvando…", error: "Erro ao salvar" };
+const LABEL: Record<SaveStatus, string> = { saved: "Salvo", saving: "Salvando…", error: "Erro ao salvar", conflict: "Não salvo" };
 
 export function PageView({ pageId }: { pageId: string }) {
   const [status, setStatus] = useState<SaveStatus>("saved");
@@ -34,6 +37,7 @@ export function PageView({ pageId }: { pageId: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [revision, setRevision] = useState(0); // recria o editor depois de restaurar uma versão
   const { isFavorite, toggle: toggleFavorite } = useFavorites();
+  const { data: role } = useMyRole();
   useEffect(() => pushRecent(pageId), [pageId]);
   const router = useRouter();
   const qc = useQueryClient();
@@ -80,8 +84,12 @@ export function PageView({ pageId }: { pageId: string }) {
         </nav>
         <ShareMenu pageId={page.id} workspaceId={page.workspace_id} />
         <button type="button" aria-pressed={fullWidth} title="Largura total"
-          onClick={() => updatePage.mutate({ id: page.id, patch: { row_properties: { ...page.row_properties, __fullWidth: !fullWidth } } })}
-          className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-[var(--n-hover)] ${fullWidth ? "text-[var(--n-accent)]" : ""}`}>
+          onClick={() => {
+            const props = { ...page.row_properties, __fullWidth: !fullWidth };
+            qc.setQueryData<PageFull>(["page", page.id], (old) => (old ? { ...old, row_properties: props } : old));
+            void setRowProp(createClient(), page.id, "__fullWidth", !fullWidth, props);
+          }}
+          className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-[var(--n-hover)] max-md:hidden ${fullWidth ? "text-[var(--n-accent)]" : ""}`}>
           <ChevronsLeftRight size={13} /> Largura total
         </button>
         <button type="button" aria-pressed={isFavorite(page.id)} aria-label={isFavorite(page.id) ? "Remover dos favoritos" : "Favoritar"}
@@ -89,7 +97,7 @@ export function PageView({ pageId }: { pageId: string }) {
           <Star size={14} className={isFavorite(page.id) ? "fill-yellow-400 text-yellow-400" : ""} />
         </button>
         {!page.is_database && <VersionsMenu pageId={page.id} onRestored={() => setRevision((r) => r + 1)} />}
-        <span aria-live="polite" className="shrink-0">{LABEL[status]}</span>
+        <span aria-live="polite" className="shrink-0 max-md:hidden">{LABEL[status]}</span>
         <Pop open={menuOpen} onOpenChange={setMenuOpen} width={230} align="end" triggerClass="shrink-0 rounded p-1 hover:bg-[var(--n-hover)]"
           trigger={<MoreHorizontal size={15} aria-label="Opções da página" />}>
           <PageMenu pageId={page.id} onClose={() => setMenuOpen(false)}
@@ -98,7 +106,20 @@ export function PageView({ pageId }: { pageId: string }) {
       </div>
       <div className="-mt-11"><PageHeader page={page} fullWidth={fullWidth} /></div>
 
-      <div className={`mx-auto w-full pb-40 px-6 sm:px-12 ${fullWidth ? "" : "max-w-[960px]"}`}>
+      {role === "viewer" && (
+        <p role="status" className="mx-auto mb-3 w-fit rounded border border-[var(--n-border)] px-3 py-1 text-xs text-[var(--n-text-muted)]">Você tem acesso de leitura: pode ver e comentar.</p>
+      )}
+      {status === "conflict" && (
+        <div role="alert" className="mx-auto mb-3 flex w-fit max-w-[calc(100%-32px)] flex-wrap items-center gap-2 rounded-lg border border-orange-400/60 px-3 py-2 text-sm">
+          <span>Outra pessoa alterou esta página enquanto você escrevia.</span>
+          <button type="button" className="rounded bg-[var(--n-accent)] px-2 py-1 text-xs font-medium text-white"
+            onClick={async () => { await qc.refetchQueries({ queryKey: ["page", page.id] }); setStatus("saved"); setRevision((r) => r + 1); }}>Ver a versão dela</button>
+          <button type="button" className="rounded px-2 py-1 text-xs hover:bg-[var(--n-hover)]"
+            onClick={() => window.dispatchEvent(new CustomEvent(FORCE_SAVE, { detail: page.id }))}>Manter a minha</button>
+        </div>
+      )}
+
+      <div className={`mx-auto w-full pb-40 px-4 sm:px-12 ${fullWidth ? "" : "max-w-[960px]"}`}>
         {parentIsDatabase && <RowProperties databaseId={page.parent_id!} rowId={page.id} />}
         {parentIsDatabase && <RelatedPanel databaseId={page.parent_id!} rowId={page.id} />}
         {page.is_database ? (

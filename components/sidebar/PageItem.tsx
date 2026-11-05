@@ -8,6 +8,8 @@ import { fetchPage, usePageTree, type TreeNode } from "@/lib/hooks/usePageTree";
 import { Pop } from "@/components/database/ui";
 import { PageMenu } from "./PageMenu";
 
+const DATABASE_PREVIEW = 10;
+
 const contains = (n: TreeNode, id?: string): boolean => n.children.some((c) => c.id === id || contains(c, id));
 
 type DropPosition = "before" | "inside" | "after" | null;
@@ -33,8 +35,10 @@ export function PageItem({ node, depth, onCreate, onMove }: Props) {
   const qc = useQueryClient();
   // Abre os ancestrais para a página atual sempre estar visível e destacada.
   const holdsActive = contains(node, pageId);
-  useEffect(() => { if (holdsActive) setOpen(true); }, [holdsActive]);
+  // Banco não abre sozinho: abrir uma tarefa despejava centenas de linhas na barra lateral.
+  useEffect(() => { if (holdsActive && !node.is_database) setOpen(true); }, [holdsActive, node.is_database]);
   const hasChildren = node.children.length > 0;
+  const shown = node.is_database ? node.children.slice(0, DATABASE_PREVIEW) : node.children;
 
   const action = "grid h-5 w-5 place-items-center rounded text-[var(--n-text-muted)] hover:bg-[var(--n-active)]";
 
@@ -115,7 +119,7 @@ export function PageItem({ node, depth, onCreate, onMove }: Props) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`group flex h-[27px] cursor-pointer items-center gap-0.5 rounded pr-1 text-sm transition-colors ${
+        className={`group flex h-[27px] cursor-pointer items-center gap-0.5 rounded pr-1 text-sm transition-colors max-md:h-9 ${
           isDragging ? "opacity-40" : ""
         } ${active ? "bg-[var(--n-active)] font-medium" : "hover:bg-[var(--n-hover)]"} ${dropBorderClass}`}
         style={{ paddingLeft: 6 + depth * 12 }}
@@ -174,15 +178,22 @@ export function PageItem({ node, depth, onCreate, onMove }: Props) {
 
       {open && (
         hasChildren ? (
-          node.children.map((c) => (
-            <PageItem
-              key={c.id}
-              node={c}
-              depth={depth + 1}
-              onCreate={onCreate}
-              onMove={onMove}
-            />
-          ))
+          <>
+            {shown.map((c) => (
+              <PageItem
+                key={c.id}
+                node={c}
+                depth={depth + 1}
+                onCreate={onCreate}
+                onMove={onMove}
+              />
+            ))}
+            {shown.length < node.children.length && (
+              <Link href={`/workspace/${node.id}`} className="block py-1 text-xs text-[var(--n-text-faint)] hover:underline" style={{ paddingLeft: 34 + depth * 12 }}>
+                Ver todos ({node.children.length})
+              </Link>
+            )}
+          </>
         ) : (
           <p
             className="py-1 text-xs text-[var(--n-text-faint)]"
