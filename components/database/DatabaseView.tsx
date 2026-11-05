@@ -1,12 +1,12 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowUpDown, Calendar, ChevronDown, Columns3, Copy, Download, Eye, EyeOff, Filter as FilterIcon, GalleryHorizontalEnd, GanttChart, Kanban, Layers,
   List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Table, Trash2, Upload, X,
 } from "lucide-react";
-import type { DatabaseRow, DatabaseViewConfig, Filter, FilterOp, ViewType } from "./types";
+import type { DatabaseRow, DatabaseViewConfig, Filter, FilterOp, PropType, ViewType } from "./types";
 import { VIEW_LABEL, defaultView, newId } from "./types";
 import { OP_LABEL, applyView, opNeedsValue, opsFor, visibleProps } from "./values";
 import { downloadCsv, toCsv } from "./csv";
@@ -96,49 +96,74 @@ function FilterValue({ f, db, onChange }: { f: Filter; db: Db; onChange: (v: any
   const col = db.schema.find((c) => c.id === f.prop);
   if (!col || !opNeedsValue(f.op)) return null;
   if (col.type === "select" || col.type === "status") {
-    return <Choice label="Valor" value={f.value ?? ""} onChange={onChange} options={(col.options ?? []).map((o) => ({ value: o.id, label: o.value }))} />;
+    return <Choice plain label="Valor" value={f.value ?? ""} onChange={onChange} options={(col.options ?? []).map((o) => ({ value: o.id, label: o.value }))} />;
   }
   if (["date", "created_time", "last_edited_time"].includes(col.type)) {
-    return <span className="w-28"><DateText key={f.prop} label="Valor" value={f.value ?? ""} onCommit={onChange}
-      className="w-full rounded border border-[var(--n-border)] bg-transparent px-1.5 py-1 text-xs outline-none focus:border-[var(--n-accent)]" /></span>;
+    return <span className="w-24"><DateText key={f.prop} label="Valor" value={f.value ?? ""} onCommit={onChange}
+      className="w-full rounded bg-[var(--n-bg)]/70 px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-[var(--n-accent)]" /></span>;
   }
   const isNum = col.type === "number" || col.type === "unique_id";
   return (
     <DraftInput key={f.prop} aria-label="Valor" type={isNum ? "number" : "text"} value={f.value ?? ""}
       onCommit={onChange} placeholder="Valor"
-      className="w-28 min-w-0 rounded border border-[var(--n-border)] bg-transparent px-1.5 py-1 text-xs outline-none focus:border-[var(--n-accent)]" />
+      className="w-28 min-w-0 rounded bg-[var(--n-bg)]/70 px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-[var(--n-accent)]" />
   );
 }
 
-/** Regras de filtro num popover: abrir não desloca a tabela. */
-function FilterMenu({ view, db }: { view: DatabaseViewConfig; db: Db }) {
+const pill = "flex min-w-0 items-center gap-0.5 rounded-full border border-[var(--n-accent)]/35 bg-[var(--n-accent)]/10 py-0.5 pl-1.5 pr-1 text-xs";
+
+/**
+ * Filtros encaixados entre as abas e os dados: empurram a tabela em vez de cobri-la.
+ * Só as listas de opção abrem por cima, e fecham ao escolher.
+ */
+function FilterBar({ view, db, open, shown }: { view: DatabaseViewConfig; db: Db; open: boolean; shown: number }) {
+  const [adding, setAdding] = useState(false);
   const patch = (id: string, p: Partial<Filter>) =>
     void db.saveView({ ...view, filters: view.filters.map((f) => (f.id === id ? { ...f, ...p } : f)) });
-  const add = () => {
-    const c = db.schema[0];
-    void db.saveView({ ...view, filters: [...view.filters, { id: newId("f_"), prop: c.id, op: opsFor(c.type)[0], value: "" }] });
+  const add = (prop: string, type: PropType) => {
+    setAdding(false);
+    void db.saveView({ ...view, filters: [...view.filters, { id: newId("f_"), prop, op: opsFor(type)[0], value: "" }] });
   };
   const props = db.schema.map((c) => ({ value: c.id, label: c.name }));
   return (
-    <div className="p-1">
-      {view.filters.map((f, i) => (
-        <div key={f.id} className="mb-1 flex flex-wrap items-center gap-1 text-xs">
-          <span className="w-12 shrink-0">
-            {i === 0 ? <span className="px-1 text-[var(--n-text-muted)]">Onde</span>
-              : i === 1 ? <Choice label="Combinação" width={90} value={view.filterMode} onChange={(filterMode) => void db.saveView({ ...view, filterMode })}
+    <div className={`grid transition-[grid-template-rows,visibility] duration-200 ease-out ${open ? "visible grid-rows-[1fr]" : "invisible grid-rows-[0fr]"}`}>
+      <div className="min-h-0 overflow-hidden">
+        <div role="group" aria-label="Filtros" className="flex flex-wrap items-center gap-1.5 pb-2 text-xs">
+          {view.filters.map((f, i) => (
+            <Fragment key={f.id}>
+              {i === 1 && (
+                <Choice plain label="Combinação" width={90} value={view.filterMode} onChange={(filterMode) => void db.saveView({ ...view, filterMode })}
                   options={[{ value: "and", label: "E" }, { value: "or", label: "Ou" }]} />
-              : <span className="px-1 text-[var(--n-text-muted)]">{view.filterMode === "and" ? "E" : "Ou"}</span>}
-          </span>
-          <Choice label="Propriedade" value={f.prop} options={props}
-            onChange={(id) => { const c = db.schema.find((x) => x.id === id)!; patch(f.id, { prop: id, op: opsFor(c.type)[0], value: "" }); }} />
-          <Choice label="Condição" value={f.op} onChange={(op: FilterOp) => patch(f.id, { op })}
-            options={opsFor(db.schema.find((c) => c.id === f.prop)?.type ?? "text").map((o) => ({ value: o, label: OP_LABEL[o] }))} />
-          <FilterValue f={f} db={db} onChange={(value) => patch(f.id, { value })} />
-          <button type="button" aria-label="Remover filtro" className="ml-auto rounded p-1 hover:bg-[var(--n-hover)]"
-            onClick={() => void db.saveView({ ...view, filters: view.filters.filter((x) => x.id !== f.id) })}><X size={12} /></button>
+              )}
+              {i > 1 && <span className="px-1 text-[var(--n-text-muted)]">{view.filterMode === "and" ? "E" : "Ou"}</span>}
+              <span className={pill}>
+                <Choice plain label="Propriedade" value={f.prop} options={props}
+                  onChange={(id) => { const c = db.schema.find((x) => x.id === id)!; patch(f.id, { prop: id, op: opsFor(c.type)[0], value: "" }); }} />
+                <Choice plain label="Condição" value={f.op} onChange={(op: FilterOp) => patch(f.id, { op })}
+                  options={opsFor(db.schema.find((c) => c.id === f.prop)?.type ?? "text").map((o) => ({ value: o, label: OP_LABEL[o] }))} />
+                <FilterValue f={f} db={db} onChange={(value) => patch(f.id, { value })} />
+                <button type="button" aria-label="Remover filtro" className="rounded-full p-0.5 hover:bg-[var(--n-active)]"
+                  onClick={() => void db.saveView({ ...view, filters: view.filters.filter((x) => x.id !== f.id) })}><X size={12} /></button>
+              </span>
+            </Fragment>
+          ))}
+          <Pop open={adding} onOpenChange={setAdding} width={220}
+            triggerClass="flex items-center gap-1 rounded-full border border-dashed border-[var(--n-border)] px-2 py-1 text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]"
+            trigger={<><Plus size={12} /> Adicionar filtro</>}>
+            {db.schema.map((c) => (
+              <button key={c.id} type="button" className={menuItem} onClick={() => add(c.id, c.type)}>
+                <PropIcon type={c.type} /> <span className="truncate">{c.name}</span>
+              </button>
+            ))}
+          </Pop>
+          {view.filters.length > 0 && (
+            <>
+              <button type="button" onClick={() => void db.saveView({ ...view, filters: [] })} className="rounded px-1.5 py-1 text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">Limpar</button>
+              <span role="status" className="ml-auto text-[var(--n-text-faint)]">{shown} de {db.rows.length}</span>
+            </>
+          )}
         </div>
-      ))}
-      <button type="button" onClick={add} className={menuItem}><Plus size={14} /> Adicionar filtro</button>
+      </div>
     </div>
   );
 }
@@ -271,18 +296,17 @@ function NewMenu({ db, defaults, onCreated }: { db: Db; defaults: Record<string,
   );
 }
 
-function Toolbar({ view, db, rows, search, setSearch, onNew, defaults, onCreated }: {
+function Toolbar({ view, db, rows, search, setSearch, onNew, defaults, onCreated, filtersOpen, onToggleFilters }: {
   view: DatabaseViewConfig; db: Db; rows: DatabaseRow[]; search: string; setSearch: (s: string) => void; onNew: () => void;
-  defaults: Record<string, any>; onCreated: (id: string) => void;
+  defaults: Record<string, any>; onCreated: (id: string) => void; filtersOpen: boolean; onToggleFilters: () => void;
 }) {
   const [searching, setSearching] = useState(false);
   const active = "text-[var(--n-accent)]";
   return (
     <div className="flex flex-wrap items-center gap-0.5">
-      <Pop width={480} align="end" triggerClass={`${toolbarBtn} ${view.filters.length ? active : ""}`}
-        trigger={<><FilterIcon size={13} /> Filtrar{view.filters.length ? ` (${view.filters.length})` : ""}</>}>
-        <FilterMenu view={view} db={db} />
-      </Pop>
+      <button type="button" aria-expanded={filtersOpen} onClick={onToggleFilters} className={`${toolbarBtn} ${view.filters.length ? active : ""}`}>
+        <FilterIcon size={13} /> Filtrar{view.filters.length ? ` (${view.filters.length})` : ""}
+      </button>
       <Pop width={340} align="end" triggerClass={`${toolbarBtn} ${view.sorts.length ? active : ""}`}
         trigger={<><ArrowUpDown size={13} /> Ordenar{view.sorts.length ? ` (${view.sorts.length})` : ""}</>}>
         <SortMenu view={view} db={db} />
@@ -352,6 +376,10 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
   const [peek, setPeek] = useState<string | null>(null);
   const [addingView, setAddingView] = useState(false);
   const view = db.views.find((v) => v.id === activeId) ?? db.views[0];
+  // Aberta enquanto houver filtro, até a pessoa fechar. Cada visão começa do seu próprio estado.
+  const [filterBar, setFilterBar] = useState<boolean | null>(null);
+  useEffect(() => setFilterBar(null), [view.id]);
+  const filtersOpen = filterBar ?? view.filters.length > 0;
 
   const rows = useMemo(() => applyView(db.rows, view, db.ctx, search), [db.rows, view, db.ctx, search]);
 
@@ -400,8 +428,10 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
             ))}
           </Pop>
         </div>
-        <Toolbar view={view} db={db} rows={rows} search={search} setSearch={setSearch} onNew={newAndOpen} defaults={defaults} onCreated={setPeek} />
+        <Toolbar view={view} db={db} rows={rows} search={search} setSearch={setSearch} onNew={newAndOpen} defaults={defaults} onCreated={setPeek}
+          filtersOpen={filtersOpen} onToggleFilters={() => setFilterBar(!filtersOpen)} />
       </div>
+      <FilterBar view={view} db={db} open={filtersOpen} shown={rows.length} />
 
       {db.error ? <p role="alert" className="py-8 text-center text-sm text-red-500">Não foi possível carregar o banco de dados.</p>
         : db.isLoading ? <div className="py-12 text-center text-xs text-[var(--n-text-faint)]">Carregando…</div>

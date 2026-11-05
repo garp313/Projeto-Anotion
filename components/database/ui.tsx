@@ -47,13 +47,17 @@ export const OptionTag = ({ option }: { option: Pick<SelectOption, "value" | "co
 );
 
 /** Seletor no padrão visual do app, no lugar do <select> nativo. */
-export function Choice<T extends string>({ value, options, onChange, label, width = 180 }: {
+export function Choice<T extends string>({ value, options, onChange, label, width = 180, plain = false }: {
   value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string; width?: number;
+  /** Sem borda, para ficar dentro de uma pílula. */
+  plain?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <Pop open={open} onOpenChange={setOpen} width={width}
-      triggerClass="flex min-w-0 items-center gap-1 rounded border border-[var(--n-border)] px-1.5 py-1 text-xs hover:bg-[var(--n-hover)]"
+      triggerClass={plain
+        ? "flex min-w-0 max-w-[180px] items-center gap-0.5 rounded px-1 py-0.5 text-xs hover:bg-[var(--n-active)]"
+        : "flex min-w-0 items-center gap-1 rounded border border-[var(--n-border)] px-1.5 py-1 text-xs hover:bg-[var(--n-hover)]"}
       trigger={<><span aria-label={label} className="truncate">{options.find((o) => o.value === value)?.label ?? "Escolha…"}</span><ChevronDown size={11} className="shrink-0" /></>}>
       {options.map((o) => (
         <button key={o.value} type="button" className={menuItem} onClick={() => { onChange(o.value); setOpen(false); }}>
