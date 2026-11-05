@@ -2,7 +2,7 @@
 
 1. `npm install`
 2. Crie um projeto no Supabase e rode, nesta ordem, no SQL Editor:
-   as migrations de `supabase/migrations/`, de `0001` a `0009`.
+   as migrations de `supabase/migrations/`, de `0001` a `0010`.
 3. Copie `.env.example` para `.env.local` e preencha URL e anon key.
 4. Em Authentication > Providers > Email, mantenha "Confirm email" ativado. Quem tem e-mail @usereserva.com entra
    sem convite, então sem confirmação qualquer um se cadastraria com um endereço que não é dele.
