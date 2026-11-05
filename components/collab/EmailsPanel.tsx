@@ -45,11 +45,24 @@ export function EmailsPanel() {
   });
 
   const error = list.data?.error;
+  if (error === "api_disabled") {
+    return (
+      <div role="alert" className="rounded-lg border border-dashed border-[var(--n-border)] p-6 text-center">
+        <Mail size={24} className="mx-auto mb-2 text-[var(--n-text-faint)]" />
+        <p className="mb-2 text-sm text-[var(--n-text-muted)]">A Gmail API está desligada no projeto do Google Cloud. Quem administra o app precisa ativá-la.</p>
+        <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noreferrer" className="text-sm text-[var(--n-accent)] underline">Abrir a Gmail API</a>
+      </div>
+    );
+  }
   if (error === "not_connected" || error === "needs_scope") {
     return (
       <div className="rounded-lg border border-dashed border-[var(--n-border)] p-6 text-center">
         <Mail size={24} className="mx-auto mb-2 text-[var(--n-text-faint)]" />
-        <p className="mb-3 text-sm text-[var(--n-text-muted)]">Autorize a leitura do Gmail para transformar e-mails em tarefas.</p>
+        <p className="mb-3 text-sm text-[var(--n-text-muted)]">
+          {error === "needs_scope"
+            ? "O Google não liberou a leitura do Gmail. Autorize de novo e marque todas as caixas na tela do Google."
+            : "Autorize a leitura do Gmail para transformar e-mails em tarefas."}
+        </p>
         <button type="button" onClick={() => void connectGoogle()} className="rounded-md bg-[var(--n-accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-95">Autorizar Gmail</button>
       </div>
     );

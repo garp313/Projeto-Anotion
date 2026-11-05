@@ -39,5 +39,7 @@ export async function GET(req: NextRequest) {
   await storeGoogleTokens(tokens.access_token, tokens.refresh_token, Math.max(60, (tokens.expires_in ?? 3600) - 60), user.id);
   if (tokens.refresh_token) await saveRefreshToken(user.id, tokens.refresh_token);
   await ensureChannel(tokens.access_token, user.id, origin).catch((e) => console.error(e));
-  return back("connected");
+  // Na tela do Google cada permissão é uma caixa: dá para conectar sem marcar a leitura do Gmail.
+  const granted: string | undefined = tokens.scope;
+  return back(granted && !granted.includes("gmail.readonly") ? "partial" : "connected");
 }

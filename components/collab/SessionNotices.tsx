@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const GOOGLE_MESSAGES: Record<string, string> = {
   connected: "Google conectado à sua conta.",
+  partial: "Google conectado, mas sem a leitura do Gmail. Autorize de novo e marque todas as caixas.",
   denied: "A autorização do Google foi cancelada.",
   failed: "Não foi possível conectar o Google. Tente de novo.",
   missing_keys: "Faltam GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET na configuração do app.",

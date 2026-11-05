@@ -9,12 +9,17 @@ export type SendResult = "sent" | "not_connected" | "failed";
 export type MessageSummary = { id: string; subject: string; from: string; date: string; snippet: string };
 export type FullMessage = MessageSummary & { body: string; threadId?: string; messageId: string; replyTo: string };
 
-/** O token existe, mas falta o escopo gmail.readonly: a pessoa precisa autorizar de novo. */
-export class GmailScopeError extends Error {}
+/** O Google recusou a leitura. "kind" separa o que a pessoa resolve (autorizar) do que é configuração do projeto. */
+export class GmailScopeError extends Error {
+  constructor(public kind: "needs_scope" | "api_disabled" = "needs_scope") { super(kind); }
+}
 
 async function read<T>(token: string, path: string): Promise<T> {
   const res = await fetch(`${API}${path}`, { cache: "no-store", headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401 || res.status === 403) throw new GmailScopeError();
+  if (res.status === 401 || res.status === 403) {
+    const detail = await res.text().catch(() => "");
+    throw new GmailScopeError(/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(detail) ? "api_disabled" : "needs_scope");
+  }
   if (!res.ok) throw new Error(`Gmail respondeu ${res.status}`);
   return res.json();
 }
