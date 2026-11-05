@@ -62,6 +62,7 @@ export type DatabaseViewConfig = {
   wrap?: boolean;
   calcs?: Record<string, RollupFn>;
   cardSize?: "small" | "medium" | "large";
+  hideEmpty?: boolean;
 };
 
 export type DatabaseRow = {
@@ -97,8 +98,9 @@ export const COLORS: { name: string; cls: string }[] = [
 const c = (name: string) => COLORS.find((x) => x.name === name)!.cls;
 
 export const DEFAULT_STATUS_OPTIONS: SelectOption[] = [
-  { id: "not_started", value: "Não iniciado", color: c("Padrão"), group: "todo" },
+  { id: "not_started", value: "A fazer", color: c("Padrão"), group: "todo" },
   { id: "in_progress", value: "Em andamento", color: c("Azul"), group: "in_progress" },
+  { id: "blocked", value: "Bloqueado", color: c("Vermelho"), group: "in_progress" },
   { id: "done", value: "Concluído", color: c("Verde"), group: "complete" },
 ];
 

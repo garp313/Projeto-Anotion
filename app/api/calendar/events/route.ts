@@ -28,13 +28,19 @@ export async function GET(req: NextRequest) {
   try {
     const { items: calendars } = await google<{ items: CalendarEntry[] }>("/users/me/calendarList");
     const qs = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "500" });
-    const lists = await Promise.all(
+    // Uma agenda com problema (feriados, compartilhada) não pode derrubar as outras.
+    const settled = await Promise.allSettled(
       calendars.map(async (c) => {
         const { items } = await eventsOf(c.id, qs);
         return items.map((e) => ({ ...e, calendarId: c.id, color: c.backgroundColor, writable: ["owner", "writer"].includes(c.accessRole) }));
       })
     );
+    const lists = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+    const lost = settled.find((r) => r.status === "rejected" && r.reason instanceof NotConnected);
+    if (lost) throw (lost as PromiseRejectedResult).reason;
+    settled.forEach((r, i) => { if (r.status === "rejected") console.error(`agenda ${calendars[i].summary}`, r.reason); });
     return NextResponse.json({
+      failed: calendars.filter((_, i) => settled[i].status === "rejected").map((c) => c.summary),
       calendars: calendars.map((c) => ({
         id: c.id, name: c.summary, color: c.backgroundColor, primary: Boolean(c.primary), writable: ["owner", "writer"].includes(c.accessRole),
       })),

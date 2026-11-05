@@ -18,12 +18,13 @@ const isBlankBlock = (b: any): boolean =>
   !(Array.isArray(b.content) ? b.content : []).some((c: any) => c?.text?.trim() || (c?.type && c.type !== "text")) &&
   (b.children ?? []).every(isBlankBlock);
 
-type Candidate = { id: string; parent_id: string | null; created_at: string; icon: string | null; cover: string | null; content_json: any[] | null; row_properties: Record<string, unknown> | null };
+type Candidate = { id: string; parent_id: string | null; created_at: string; created_by?: string | null; is_database?: boolean; icon: string | null; cover: string | null; content_json: any[] | null; row_properties: Record<string, unknown> | null };
 
 function isEmptyPage(p: Candidate) {
   return !p.icon && !p.cover
     && (p.content_json ?? []).every(isBlankBlock)
-    && Object.values(p.row_properties ?? {}).every(isBlankValue);
+    // Chaves "__" são da página (visões, largura), não conteúdo: banco vazio tem __views.
+    && Object.entries(p.row_properties ?? {}).every(([k, v]) => k.startsWith("__") || isBlankValue(v));
 }
 
 /**
@@ -41,18 +42,19 @@ export function useEmptyPageCleanup(pages: PageRow[] | undefined) {
     if (!ready) return;
     const timer = setTimeout(async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("pages")
-        .select("id,parent_id,created_at,icon,cover,content_json,row_properties")
-        .eq("title", "")
-        .eq("is_database", false)
-        .eq("is_archived", false);
+      const find = (cols: string) => supabase.from("pages").select(cols).eq("title", "").eq("is_archived", false);
+      const base = "id,parent_id,created_at,is_database,icon,cover,content_json,row_properties";
+      let { data, error } = await find(`${base},created_by`);
+      if (error?.code === "42703") ({ data, error } = await find(base));
       if (error || !data?.length) return;
+      const { data: auth } = await supabase.auth.getSession();
+      const me = auth.session?.user.id;
 
       const current = window.location.pathname.split("/").pop();
       const hasChildren = new Set((latest.current ?? []).map((p) => p.parent_id));
-      const ids = (data as Candidate[])
-        .filter((p) => p.id !== current && p.parent_id !== current && !hasChildren.has(p.id)
+      const ids = (data as unknown as Candidate[])
+        // Workspace compartilhado: quem abriu uma página nova agora pode estar nela. Cada um limpa as suas.
+        .filter((p) => (!p.created_by || p.created_by === me) && p.id !== current && p.parent_id !== current && !hasChildren.has(p.id)
           && Date.now() - new Date(p.created_at).getTime() > MIN_AGE_MS && isEmptyPage(p))
         .map((p) => p.id);
       if (!ids.length) return;

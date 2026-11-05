@@ -21,9 +21,9 @@ function dueAlert(t: Task): { label: string; tone: string } | null {
   const today = iso(now);
   if (due < today) return { label: "Atrasada", tone: "text-red-500" };
   if (due === today) return { label: "Vence hoje", tone: "text-orange-500" };
-  const remind = t.due.remind;
-  if (remind === null || remind === undefined) return null;
-  return due <= iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + remind)) ? { label: "Lembrete", tone: "text-[var(--n-accent)]" } : null;
+  const within = (n: number) => due <= iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
+  if (within(3)) return { label: "Vence em breve", tone: "text-orange-500" };
+  return t.due.remind !== null && t.due.remind !== undefined && within(t.due.remind) ? { label: "Lembrete", tone: "text-[var(--n-accent)]" } : null;
 }
 
 export function Inbox() {

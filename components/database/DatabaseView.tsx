@@ -4,12 +4,15 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowUpDown, Calendar, ChevronDown, Columns3, Copy, Download, Eye, EyeOff, Filter as FilterIcon, GalleryHorizontalEnd, GanttChart, Kanban, Layers,
-  List, Maximize2, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Table, Trash2, Upload, X,
+  List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Table, Trash2, Upload, X,
 } from "lucide-react";
 import type { DatabaseRow, DatabaseViewConfig, Filter, FilterOp, ViewType } from "./types";
 import { VIEW_LABEL, defaultView, newId } from "./types";
 import { OP_LABEL, applyView, opNeedsValue, opsFor, visibleProps } from "./values";
 import { downloadCsv, parseCsv, planImport, toCsv } from "./csv";
+import { moveRowsToTasks } from "./moveRows";
+import { useQueryClient } from "@tanstack/react-query";
+import { usePageTree } from "@/lib/hooks/usePageTree";
 import { useDatabase, type Db } from "./useDatabase";
 import { BoardView, CalendarView, GalleryView, ListView, TableView, TimelineView } from "./views";
 import { Choice, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
@@ -50,7 +53,7 @@ function ViewTab({ view, active, db, onPick, onRemoved }: {
             const I = VIEW_ICON[t];
             const groupBy = t === "board" && !view.groupBy ? defaultView("board", db.schema).groupBy : view.groupBy;
             return (
-              <button key={t} type="button" className={menuItem} onClick={() => void db.saveView({ ...view, type: t, groupBy })}>
+              <button key={t} type="button" className={menuItem} onClick={() => void db.saveView({ ...view, type: t, groupBy, name: view.name === VIEW_LABEL[view.type] ? VIEW_LABEL[t] : view.name })}>
                 <I size={14} /> {VIEW_LABEL[t]}{t === view.type && " ✓"}
               </button>
             );
@@ -180,6 +183,32 @@ function presetsFor(db: Db) {
   ].filter((p) => !!p);
 }
 
+/** Só em tabelas internas: traz as demandas para o banco Tarefas, a fonte única dos números. */
+function MoveToTasks({ db, onDone }: { db: Db; onDone: (note: string) => void }) {
+  const qc = useQueryClient();
+  const { pages } = usePageTree();
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const tasks = pages.data?.find((p) => p.is_database && p.title === "Tarefas" && p.id !== db.id);
+  if (!tasks || !db.page?.parent_id || db.page.title === "Projetos") return null;
+  const run = async () => {
+    setBusy(true);
+    try { onDone(`${await moveRowsToTasks(qc, db.id)} linha(s) movida(s) para Tarefas.`); }
+    catch { onDone("Não foi possível mover as linhas."); }
+    setBusy(false); setAsking(false);
+  };
+  if (!asking) return <button type="button" className={menuItem} onClick={() => setAsking(true)}><MoveRight size={14} /> Mover linhas para Tarefas</button>;
+  return (
+    <div className="p-2 text-xs text-[var(--n-text-muted)]">
+      <p className="mb-1.5">Mover {db.rows.length} linha(s) para o banco Tarefas e levar esta tabela para a lixeira?</p>
+      <div className="flex gap-1">
+        <button type="button" disabled={busy} onClick={() => void run()} className="rounded bg-[var(--n-accent)] px-2 py-1 font-medium text-white disabled:opacity-60">{busy ? "Movendo…" : "Mover"}</button>
+        <button type="button" onClick={() => setAsking(false)} className="rounded px-2 py-1 hover:bg-[var(--n-hover)]">Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: DatabaseRow[] }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -212,6 +241,7 @@ function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: 
         );
       })}
       <input ref={file} type="file" accept=".csv,text/csv" hidden aria-label="Arquivo CSV" onChange={(e) => { void importFile(e.target.files?.[0]); e.target.value = ""; }} />
+      <MoveToTasks db={db} onDone={setNote} />
       {note && <p role="status" className="px-2 py-1 text-xs text-[var(--n-text-muted)]">{note}</p>}
     </Pop>
   );
@@ -260,6 +290,12 @@ function Toolbar({ view, db, rows, search, setSearch, onNew, defaults, onCreated
       </Pop>
       <Pop width={220} align="end" triggerClass={`${toolbarBtn} ${view.groupBy ? active : ""}`} trigger={<><Layers size={13} /> Agrupar</>}>
         {view.type !== "board" && <button type="button" className={menuItem} onClick={() => void db.saveView({ ...view, groupBy: null })}>Nenhum</button>}
+        {view.type === "board" && (
+          <label className={menuItem}>
+            <input type="checkbox" checked={Boolean(view.hideEmpty)} className="accent-[var(--n-accent)]"
+              onChange={(e) => void db.saveView({ ...view, hideEmpty: e.target.checked })} /> Ocultar grupos vazios
+          </label>
+        )}
         {db.schema.filter((c) => ["select", "status", "multi_select", "person", "checkbox", "text", "date"].includes(c.type)).map((c) => (
           <button key={c.id} type="button" className={menuItem} onClick={() => void db.saveView({ ...view, groupBy: c.id })}>
             <PropIcon type={c.type} /> {c.name}{view.groupBy === c.id && " ✓"}
@@ -342,6 +378,9 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
   };
   const newAndOpen = async () => setPeek((await db.addRow({ row_properties: defaults })).id);
   const Body = VIEWS[view.type];
+  if ((db.page as { is_archived?: boolean } | undefined)?.is_archived) {
+    return <p className="py-3 text-sm text-[var(--n-text-faint)]">Esta tabela foi arquivada. As linhas dela estão no banco Tarefas.</p>;
+  }
 
   return (
     <div className="w-full">

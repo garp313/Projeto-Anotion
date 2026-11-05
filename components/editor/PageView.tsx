@@ -23,6 +23,7 @@ import { VersionsMenu } from "@/components/collab/VersionsMenu";
 const skeleton = () => <div className="h-40 animate-pulse rounded bg-[var(--n-hover)]/40" />;
 const BlockEditor = dynamic(() => import("./BlockEditor").then((m) => m.BlockEditor), { ssr: false, loading: skeleton });
 const DatabaseView = dynamic(() => import("@/components/database/DatabaseView").then((m) => m.DatabaseView), { ssr: false, loading: skeleton });
+const RelatedPanel = dynamic(() => import("@/components/database/RelatedPanel").then((m) => m.RelatedPanel), { ssr: false });
 const RowProperties = dynamic(() => import("@/components/database/RowProperties").then((m) => m.RowProperties), { ssr: false });
 
 const LABEL: Record<SaveStatus, string> = { saved: "Salvo", saving: "Salvando…", error: "Erro ao salvar" };
@@ -99,6 +100,7 @@ export function PageView({ pageId }: { pageId: string }) {
 
       <div className={`mx-auto w-full pb-40 px-6 sm:px-12 ${fullWidth ? "" : "max-w-[960px]"}`}>
         {parentIsDatabase && <RowProperties databaseId={page.parent_id!} rowId={page.id} />}
+        {parentIsDatabase && <RelatedPanel databaseId={page.parent_id!} rowId={page.id} />}
         {page.is_database ? (
           <div className="mt-4">
             <DatabaseView databaseId={page.id} />

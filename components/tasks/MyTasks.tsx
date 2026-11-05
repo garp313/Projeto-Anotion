@@ -7,7 +7,7 @@ import { Check, ListChecks } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { createTaskTemplate, loadTasks, setTaskStatus, type Task } from "@/lib/tasks";
-import { OptionTag, Pop, menuItem } from "@/components/database/ui";
+import { Choice, OptionTag, Pop, menuItem } from "@/components/database/ui";
 import { formatDateValue } from "@/components/database/values";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -102,13 +102,26 @@ export function MyTasks() {
     () => (data?.tasks ?? []).filter((t) => t.people.some((p) => p.id === me?.id || me?.names.includes(p.name))),
     [data, me]
   );
-  const buckets = useMemo(() => bucketize(assigned.filter((t) => !t.done)), [assigned]);
+  const [project, setProject] = useState("");
+  const projectNames = useMemo(() => [...new Set(assigned.flatMap((t) => t.projects))].sort(), [assigned]);
+  const buckets = useMemo(() => {
+    const open = assigned.filter((t) => !t.done && (!project || t.projects.includes(project)));
+    const own = open.filter((t) => t.isProject);
+    const groups = bucketize(open.filter((t) => !t.isProject));
+    return own.length ? [...groups, { id: "projects", label: "Projetos", tasks: own }] : groups;
+  }, [assigned, project]);
   const finished = useMemo(() => assigned.filter((t) => t.done), [assigned]);
 
   return (
     <div className="mx-auto w-full max-w-[760px] p-6 pt-12 sm:px-10">
       <h1 className="mb-1 text-3xl font-bold">Minhas tarefas</h1>
-      <p className="mb-6 text-sm text-[var(--n-text-muted)]">Tudo que está atribuído a você.</p>
+      <p className="mb-4 text-sm text-[var(--n-text-muted)]">Tudo que está atribuído a você.</p>
+      {projectNames.length > 0 && (
+        <div className="mb-6 w-fit">
+          <Choice label="Filtrar por projeto" width={240} value={project} onChange={setProject}
+            options={[{ value: "", label: "Todos os projetos" }, ...projectNames.map((p) => ({ value: p, label: p }))]} />
+        </div>
+      )}
 
       {error ? <p role="alert" className="text-sm text-red-500">Não foi possível carregar as tarefas.</p>
         : isLoading || !me ? <div className="h-40 animate-pulse rounded bg-[var(--n-hover)]/40" />

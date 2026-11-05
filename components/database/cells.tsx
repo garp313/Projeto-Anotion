@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DatePicker } from "./DatePicker";
 import { Check, ExternalLink, FileUp, Link2, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -9,7 +10,7 @@ import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue }
 import type { Db } from "./useDatabase";
 import { OptionTag, Pop, fieldClass, menuItem } from "./ui";
 
-type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean };
+type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean; dense?: boolean };
 
 const cellBox = "block min-h-[30px] w-full min-w-0 overflow-hidden px-2 py-1 text-left text-sm";
 const Empty = ({ compact }: { compact?: boolean }) =>
@@ -148,7 +149,7 @@ function DateField({ col, row, db, compact }: CellProps) {
   );
 }
 
-function PersonField({ col, row, db, compact }: CellProps) {
+function PersonField({ col, row, db, compact, dense }: CellProps) {
   const people: PersonValue[] = rawValue(col, row, db.ctx) ?? [];
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -172,7 +173,13 @@ function PersonField({ col, row, db, compact }: CellProps) {
   return (
     <Pop
       open={open} onOpenChange={setOpen} triggerClass={cellBox}
-      trigger={people.length
+      trigger={dense && people.length > 1
+        // Vários responsáveis numa linha só: o nome de todos deixava a linha muito mais alta.
+        ? <span title={people.map((p) => p.name).join(", ")} className="flex items-center">
+            {people.slice(0, 3).map((p, i) => <span key={p.name} className={i ? "-ml-1.5 rounded-full ring-2 ring-[var(--n-bg)]" : "rounded-full ring-2 ring-[var(--n-bg)]"}>{avatar(p.name)}</span>)}
+            {people.length > 3 && <span className="ml-1 text-xs text-[var(--n-text-muted)]">+{people.length - 3}</span>}
+          </span>
+        : people.length
         ? <span className="flex min-w-0 flex-wrap gap-1.5">{people.map((p) => <span key={p.name} title={p.name} className="flex min-w-0 max-w-full items-center gap-1">{avatar(p.name)}<span className="min-w-0 truncate">{p.name}</span></span>)}</span>
         : <Empty compact={compact} />}
     >
@@ -257,7 +264,8 @@ function FilesField({ col, row, db, compact }: CellProps) {
   );
 }
 
-function RelationField({ col, row, db, compact }: CellProps) {
+function RelationField({ col, row, db, compact, dense }: CellProps) {
+  const router = useRouter();
   const ids: string[] = rawValue(col, row, db.ctx) ?? [];
   const target = col.relationDatabaseId ? db.ctx.related[col.relationDatabaseId] : undefined;
   const [q, setQ] = useState("");
@@ -278,7 +286,13 @@ function RelationField({ col, row, db, compact }: CellProps) {
   return (
     <Pop triggerClass={cellBox}
       trigger={chosen.length
-        ? <span className="flex min-w-0 flex-wrap gap-1">{chosen.map((r) => <span key={r.id} title={label(r)} className="min-w-0 max-w-full truncate underline decoration-[var(--n-text-faint)]">{label(r)}</span>)}</span>
+        ? <span className={`flex min-w-0 gap-1 ${dense ? "overflow-hidden" : "flex-wrap"}`}>
+            {chosen.map((r) => (
+              <span key={r.id} role="link" title={label(r)}
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); router.push(`/workspace/${r.id}`); }}
+                className="min-w-0 max-w-full shrink-0 cursor-pointer truncate rounded bg-[var(--n-hover)] px-1.5 text-sm hover:bg-[var(--n-active)]">{label(r)}</span>
+            ))}
+          </span>
         : <Empty compact={compact} />}>
       <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ou criar…" className={`${fieldClass} mb-1`}
         onKeyDown={(e) => { if (e.key === "Enter" && typed && !shown.length) { e.preventDefault(); void createNew(); } }} />
@@ -360,6 +374,16 @@ export function PropertyValue(props: CellProps) {
     const v = rawValue(col, row, db.ctx);
     const err = v && typeof v === "object" && "__error" in v ? (v.__error as string) : null;
     const text = displayText(col, v, db.ctx);
+    if (col.rollup?.fn === "percent_complete" && !err) {
+      return (
+        <span className={`${cellBox} flex items-center gap-2`}>
+          <span role="progressbar" aria-valuenow={parseInt(text, 10) || 0} className="h-1.5 max-w-[120px] flex-1 overflow-hidden rounded-full bg-[var(--n-active)]">
+            <span className="block h-full bg-green-500" style={{ width: text || "0%" }} />
+          </span>
+          <span className="text-xs text-[var(--n-text-muted)]">{text || "0%"}</span>
+        </span>
+      );
+    }
     return (
       <span title={err ?? undefined} className={`${cellBox} ${err ? "text-red-500" : "text-[var(--n-text-muted)]"}`}>
         {text || <Empty compact={compact} />}
@@ -396,5 +420,6 @@ export function PropertyPreview({ col, row, db }: Omit<CellProps, "compact">) {
   }
   if (col.type === "checklist") return (v as ChecklistItem[]).length ? <ChecklistProgress items={v} /> : null;
   const text = displayText(col, v, db.ctx);
-  return text ? <span className={`truncate text-xs text-[var(--n-text-muted)] ${dueTone(col, row, db.ctx)}`}>{text}</span> : null;
+  // Duas cores na mesma classe disputam pela ordem do CSS: o alerta de prazo podia perder.
+  return text ? <span className={`truncate text-xs ${dueTone(col, row, db.ctx) || "text-[var(--n-text-muted)]"}`}>{text}</span> : null;
 }

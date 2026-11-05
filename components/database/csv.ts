@@ -51,6 +51,21 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
+const MONTHS = ["jan", "fev|feb", "mar", "abr|apr", "mai|may", "jun", "jul", "ago|aug", "set|sep", "out|oct", "nov", "dez|dec"];
+const monthOf = (word: string) => MONTHS.findIndex((m) => new RegExp(`^(${m})`, "i").test(word)) + 1;
+
+/** O Notion exporta "September 30, 2026"; também aceita dd/mm/aaaa, ISO e "30 de setembro de 2026". */
+function parseDay(s: string) {
+  const text = s.trim();
+  const br = /^\d{1,2}\/\d{1,2}\/\d{4}/.exec(text);
+  if (br) return parseBr(br[0]);
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  const en = /^([a-zç]+)\.? (\d{1,2}), (\d{4})/i.exec(text);
+  const pt = /^(\d{1,2}) de ([a-zç]+)\.? de (\d{4})/i.exec(text);
+  const [word, day, year] = en ? [en[1], en[2], en[3]] : pt ? [pt[2], pt[1], pt[3]] : [];
+  return word && monthOf(word) ? parseBr(`${day}/${monthOf(word)}/${year}`) : null;
+}
+
 const SKIP = [...READ_ONLY, "relation", "files", "checklist"];
 
 /** Liga as colunas do arquivo às do banco pelo nome; as desconhecidas viram propriedades de texto. */
@@ -87,9 +102,8 @@ export function planImport(table: string[][], schema: ColumnSchema[]) {
       case "number": { const n = Number(raw.replace(/[^\d,.-]/g, "").replace(/\.(?=.*,)/g, "").replace(",", ".")); return Number.isNaN(n) ? null : n; }
       case "date": {
         const [a, b] = raw.split(/\s*→\s*/);
-        const day = (s: string) => parseBr(s) ?? (/^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null);
-        const start = day(a);
-        return start ? { start, end: b ? day(b) : null } : null;
+        const start = parseDay(a);
+        return start ? { start, end: b ? parseDay(b) : null } : null;
       }
       default: return raw;
     }

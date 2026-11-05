@@ -262,14 +262,14 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
                     {c.type === "title" ? (
                       <div className="flex items-center">
                         {row.icon && <span className="pl-2 text-sm">{row.icon}</span>}
-                        <PropertyValue col={c} row={row} db={db} autoFocus={row.id === fresh} />
+                        <PropertyValue col={c} row={row} db={db} autoFocus={row.id === fresh} dense={!view.wrap} />
                         <span className="mr-1 flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100">
                           <button type="button" onClick={() => open(row.id)}
                             className="rounded border border-[var(--n-border)] px-1 text-[11px] text-[var(--n-text-muted)] hover:bg-[var(--n-active)]">Abrir</button>
                           <RowMenu row={row} db={db} open={open} />
                         </span>
                       </div>
-                    ) : <PropertyValue col={c} row={row} db={db} />}
+                    ) : <PropertyValue col={c} row={row} db={db} dense={!view.wrap} />}
                   </div>
                 ))}
               </div>
@@ -324,7 +324,10 @@ export function BoardView({ db, view, rows, open, defaults }: ViewProps) {
       </div>
     );
   }
-  const groups = groupRows(rows, gcol, db.ctx);
+  // Grupos primeiro e "Sem status" por último, só quando tiver algo: "Concluído" não some à direita.
+  const all = groupRows(rows, gcol, db.ctx);
+  const groups = [...all.filter((g) => g.id !== "__none"), ...all.filter((g) => g.id === "__none" && g.rows.length)]
+    .filter((g) => !view.hideEmpty || g.rows.length);
 
   const drop = (e: React.DragEvent, g: Group) => {
     setOver(null);
@@ -339,7 +342,7 @@ export function BoardView({ db, view, rows, open, defaults }: ViewProps) {
       {groups.map((g) => (
         <section key={g.id} aria-label={g.label}
           onDragOver={(e) => { e.preventDefault(); setOver(g.id); }} onDragLeave={() => setOver(null)} onDrop={(e) => drop(e, g)}
-          className={`w-64 shrink-0 rounded-lg p-1.5 ${over === g.id ? "bg-[var(--n-active)]" : "bg-[var(--n-hover)]/50"}`}>
+          className={`w-56 shrink-0 rounded-lg p-1.5 ${over === g.id ? "bg-[var(--n-active)]" : "bg-[var(--n-hover)]/50"}`}>
           <header className="mb-1.5 flex items-center gap-2 px-1 py-0.5">
             {g.color ? <OptionTag option={{ value: g.label, color: g.color }} /> : <span className="text-xs font-medium text-[var(--n-text-muted)]">{g.label}</span>}
             <span className="text-xs text-[var(--n-text-faint)]">{g.rows.length}</span>

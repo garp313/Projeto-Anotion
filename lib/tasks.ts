@@ -13,6 +13,9 @@ export type Task = {
   due: DateValue | null;
   done: boolean;
   people: PersonValue[];
+  /** Linha de banco com rollup: é um projeto, não uma tarefa. */
+  isProject: boolean;
+  projects: string[];
   statusColId?: string;
   doneOption?: SelectOption;
   statusOption?: SelectOption;
@@ -40,6 +43,7 @@ export async function loadTasks(client?: ReturnType<typeof createClient>): Promi
     .from("pages").select("id,workspace_id,title,icon,parent_id,row_properties").in("parent_id", ids).eq("is_archived", false);
   if (rowsError) throw rowsError;
 
+  const titles = new Map((rows as { id: string; title: string }[]).map((r) => [r.id, r.title || "Sem título"]));
   const tasks = (rows as Pick<DatabaseRow, "id" | "workspace_id" | "title" | "icon" | "parent_id" | "row_properties">[]).map((r) => {
     const schema = schemas.get(r.parent_id)!;
     const dates = schema.filter((c) => c.type === "date");
@@ -49,12 +53,16 @@ export async function loadTasks(client?: ReturnType<typeof createClient>): Promi
     const props = r.row_properties ?? {};
     const status = statusCol?.options?.find((o) => o.id === props[statusCol.id]);
     const priorityCol = schema.find((c) => c.type === "select" && /prioridade|priority/i.test(c.name));
+    const projectCol = schema.find((c) => c.type === "relation" && /projeto|project/i.test(c.name));
+    const linked: string[] = projectCol && Array.isArray(props[projectCol.id]) ? props[projectCol.id] : [];
     return {
       id: r.id, title: r.title, icon: r.icon, databaseId: r.parent_id, rowProperties: props,
       databaseTitle: dbs!.find((d) => d.id === r.parent_id)?.title ?? "",
       due: dateCol ? asDate(props[dateCol.id]) : null,
       done: status?.group === "complete",
       people: personCol && Array.isArray(props[personCol.id]) ? props[personCol.id] : [],
+      isProject: schema.some((c) => c.type === "rollup"),
+      projects: linked.map((id) => titles.get(id)).filter((t): t is string => Boolean(t)),
       statusColId: statusCol?.id,
       doneOption: statusCol?.options?.find((o) => o.group === "complete"),
       statusOption: status,

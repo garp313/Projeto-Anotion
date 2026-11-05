@@ -80,7 +80,8 @@ export async function google<T = any>(path: string, init: RequestInit = {}): Pro
 export function calendarError(e: unknown) {
   if (e instanceof NotConnected) return NextResponse.json({ error: "not_connected" }, { status: 401 });
   console.error(e);
-  return NextResponse.json({ error: "calendar_error" }, { status: 502 });
+  const disabled = /accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(String(e));
+  return NextResponse.json({ error: disabled ? "api_disabled" : "calendar_error" }, { status: 502 });
 }
 
 export type EventInput = {

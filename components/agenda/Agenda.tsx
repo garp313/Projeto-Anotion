@@ -41,7 +41,12 @@ class NotConnectedError extends Error {}
 async function api(url: string, init?: RequestInit) {
   const res = await fetch(url, init);
   if (res.status === 401) throw new NotConnectedError();
-  if (!res.ok) throw new Error("Não foi possível falar com o Google Agenda.");
+  if (!res.ok) {
+    const { error } = await res.json().catch(() => ({ error: "" }));
+    throw new Error(error === "api_disabled"
+      ? "A Google Calendar API está desligada no projeto do Google Cloud."
+      : "Não foi possível falar com o Google Agenda.");
+  }
   return res.status === 204 ? null : res.json();
 }
 
@@ -259,7 +264,7 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
     queryKey: key,
     queryFn: () => {
       const qs = new URLSearchParams({ timeMin: start.toISOString(), timeMax: addDays(start, days).toISOString() });
-      return api(`/api/calendar/events?${qs}`) as Promise<{ calendars: Calendar[]; events: GEvent[] }>;
+      return api(`/api/calendar/events?${qs}`) as Promise<{ calendars: Calendar[]; events: GEvent[]; failed?: string[] }>;
     },
     placeholderData: keepPreviousData,
     retry: false,
@@ -297,7 +302,7 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
   const events = [...(notConnected ? [] : data?.events ?? []), ...taskEvents].filter((e) => !hidden.includes(e.calendarId));
   const defaultCalendar = calendars.find((c) => c.primary)?.id ?? calendars.find((c) => c.writable)?.id ?? "primary";
   const open = (e: GEvent) => { if (e.id.startsWith("task:")) router.push(`/workspace/${e.id.slice(5)}`); else if (e.writable) { save.reset(); remove.reset(); setDraft(toDraft(e)); } else if (e.htmlLink) window.open(e.htmlLink, "_blank", "noopener"); };
-  const create = (d: Date, hour?: number) => { if (notConnected) return; save.reset(); setDraft(newDraft(d, defaultCalendar, hour)); };
+  const create = (d: Date, hour?: number) => { if (notConnected || error) return; save.reset(); setDraft(newDraft(d, defaultCalendar, hour)); };
   const shift = (n: number) => setAnchor((a) => (view === "week" ? addDays(a, 7 * n) : new Date(a.getFullYear(), a.getMonth() + n, 1)));
   const title = view === "month"
     ? anchor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
@@ -338,9 +343,16 @@ export function Agenda({ initialDate }: { initialDate?: string }) {
         </div>
       )}
 
-      {error && !notConnected
-        ? <p role="alert" className="py-10 text-center text-sm text-red-500">{error.message}</p>
-        : isLoading && !notConnected ? <div className="h-96 animate-pulse rounded bg-[var(--n-hover)]/40" />
+      {error && !notConnected && (
+        <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-orange-400/60 px-3 py-2 text-sm">
+          <CalendarDays size={16} className="text-orange-500" />
+          <span className="min-w-0 flex-1 text-[var(--n-text-muted)]">{error.message} Os prazos das tarefas continuam abaixo.</span>
+          <button type="button" onClick={connect} className="rounded-md bg-[var(--n-accent)] px-2.5 py-1 text-xs font-medium text-white hover:brightness-95">Reconectar Google</button>
+        </div>
+      )}
+      {data?.failed?.length ? <p role="status" className="mb-3 text-xs text-[var(--n-text-faint)]">Não foi possível ler: {data.failed.join(", ")}.</p> : null}
+
+      {isLoading && !notConnected ? <div className="h-96 animate-pulse rounded bg-[var(--n-hover)]/40" />
         : view === "month"
           ? <MonthGrid start={start} anchor={anchor} events={events} onDayClick={(d) => create(d)} onOpen={open} />
           : <WeekGrid start={start} events={events} onSlot={create} onOpen={open} />}
