@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, CalendarDays, ChevronsLeft, FileText, ListChecks, Menu, Plus, Search } from "lucide-react";
+import { Bell, CalendarDays, ChevronsLeft, FileText, ListChecks, Menu, Plus, Search, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { connectGoogle, useGoogleStatus, useUnreadCount } from "@/lib/collab";
@@ -13,9 +13,12 @@ import { usePageTree } from "@/lib/hooks/usePageTree";
 import { PageTree } from "./PageTree";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { Trash } from "./Trash";
+import dynamic from "next/dynamic";
+
+const ImportWizard = dynamic(() => import("@/components/import/ImportWizard").then((m) => m.ImportWizard), { ssr: false });
 
 export function Sidebar() {
-  const { collapsed, width, toggle, setWidth } = useSidebar();
+  const { collapsed: savedCollapsed, width, toggle: toggleSaved, setWidth } = useSidebar();
   const { tree, pages, workspace, createPage, movePage } = usePageTree();
   const { favorites } = useFavorites();
   const recents = useRecents();
@@ -45,6 +48,7 @@ export function Sidebar() {
   };
   const dragging = useRef(false);
   // No celular a barra vira gaveta sobre o conteúdo: fixa, ela deixava 130px para a página.
+  const [importing, setImporting] = useState(false);
   const [mobile, setMobile] = useState(false);
   const pathname = usePathname();
   useEffect(() => {
@@ -54,13 +58,11 @@ export function Sidebar() {
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
   }, []);
-  const wasMobile = useRef(false);
-  useEffect(() => {
-    // Recolher é automático no celular: voltar ao tamanho normal não pode deixar a barra escondida.
-    if (mobile) useSidebar.setState({ collapsed: true });
-    else if (wasMobile.current) useSidebar.setState({ collapsed: false });
-    wasMobile.current = mobile;
-  }, [mobile, pathname]);
+  // A gaveta tem estado próprio: a preferência salva do computador não muda por causa do celular.
+  const [drawer, setDrawer] = useState(false);
+  useEffect(() => setDrawer(false), [pathname, mobile]);
+  const collapsed = mobile ? !drawer : savedCollapsed;
+  const toggle = useCallback(() => (mobile ? setDrawer((o) => !o) : toggleSaved()), [mobile, toggleSaved]);
   useEmptyPageCleanup(pages.data);
 
   // Ctrl+\ (ou Cmd+\)
@@ -91,6 +93,7 @@ export function Sidebar() {
           <Menu size={16} />
         </button>
       )}
+      {importing && <ImportWizard onClose={() => setImporting(false)} />}
       {mobile && !collapsed && <button type="button" aria-label="Fechar menu" onClick={toggle} className="fixed inset-0 z-40 bg-black/40" />}
       <aside
         aria-hidden={collapsed}
@@ -141,6 +144,7 @@ export function Sidebar() {
               <button type="button" className={`${row} text-orange-500`} onClick={() => void connectGoogle()}>Reconectar Google</button>
             )}
             <Trash triggerClass={row} />
+            <button className={row} onClick={() => setImporting(true)}><Upload size={16} /> Importar do Notion</button>
             <button className={row} onClick={() => createPage.mutate(null)}><Plus size={16} /> Nova página</button>
           </div>
         </div>

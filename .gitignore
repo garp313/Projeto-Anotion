@@ -6,3 +6,6 @@ next-env.d.ts
 anotion
 supabase/.temp/
 .vscode/
+
+# Exports do Notion têm dados reais do time
+*.zip

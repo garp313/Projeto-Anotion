@@ -539,8 +539,15 @@ export function TimelineView({ db, view, rows, open, defaults }: ViewProps) {
   const days = Array.from({ length: 60 }, (_, i) => new Date(origin.getFullYear(), origin.getMonth(), origin.getDate() + i));
   const index = (s: string) => Math.round((parseDay(s.slice(0, 10)).getTime() - origin.getTime()) / 86_400_000);
   const today = iso(new Date());
-  const dated = rows.filter((r) => asDate(rawValue(col, r, db.ctx)));
+  const allDated = rows.filter((r) => asDate(rawValue(col, r, db.ctx)));
   const undated = rows.filter((r) => !asDate(rawValue(col, r, db.ctx)));
+  // Item fora da janela ocupava linha vazia: a tela parecia sem dados, com o conteúdo lá embaixo.
+  const inView = (r: DatabaseRow) => {
+    const v = asDate(rawValue(col, r, db.ctx))!;
+    return index(v.end ?? v.start) >= 0 && index(v.start) < days.length;
+  };
+  const dated = allDated.filter(inView).sort((a, b) => asDate(rawValue(col, a, db.ctx))!.start.localeCompare(asDate(rawValue(col, b, db.ctx))!.start));
+  const earliest = allDated.map((r) => asDate(rawValue(col, r, db.ctx))!.start.slice(0, 10)).sort()[0];
 
   const startDrag = (e: React.PointerEvent, r: DatabaseRow) => {
     const x0 = e.clientX;
@@ -565,6 +572,8 @@ export function TimelineView({ db, view, rows, open, defaults }: ViewProps) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-end gap-1">
+        {allDated.length > dated.length && <span className="mr-auto text-xs text-[var(--n-text-faint)]">{allDated.length - dated.length} fora deste período</span>}
+        {earliest && <button type="button" onClick={() => setOrigin(parseDay(earliest))} className="rounded px-2 py-0.5 text-xs hover:bg-[var(--n-hover)]">Início</button>}
         <button type="button" aria-label="Voltar 30 dias" onClick={() => shift(-30)} className="rounded p-1 hover:bg-[var(--n-hover)]"><ChevronLeft size={15} /></button>
         <button type="button" onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0, 0, 0, 0); setOrigin(d); }} className="rounded px-2 py-0.5 text-xs hover:bg-[var(--n-hover)]">Hoje</button>
         <button type="button" aria-label="Avançar 30 dias" onClick={() => shift(30)} className="rounded p-1 hover:bg-[var(--n-hover)]"><ChevronRight size={15} /></button>
@@ -583,7 +592,8 @@ export function TimelineView({ db, view, rows, open, defaults }: ViewProps) {
             {days.map((d, i) => iso(d) === today && <span key="today" style={{ left: i * DAY_W + DAY_W / 2 }} className="absolute inset-y-0 w-px bg-red-500/60" />)}
             {dated.map((r) => {
               const v = asDate(rawValue(col, r, db.ctx))!;
-              const s = index(v.start), e = index(v.end ?? v.start);
+              // A barra começa na borda quando o item vem de antes da janela.
+              const s = Math.max(index(v.start), 0), e = Math.min(index(v.end ?? v.start), days.length - 1);
               const off = drag?.id === r.id ? drag.dx : 0;
               return (
                 <div key={r.id} className="relative h-8">

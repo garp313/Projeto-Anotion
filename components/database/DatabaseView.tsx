@@ -9,7 +9,7 @@ import {
 import type { DatabaseRow, DatabaseViewConfig, Filter, FilterOp, ViewType } from "./types";
 import { VIEW_LABEL, defaultView, newId } from "./types";
 import { OP_LABEL, applyView, opNeedsValue, opsFor, visibleProps } from "./values";
-import { downloadCsv, parseCsv, planImport, toCsv } from "./csv";
+import { downloadCsv, toCsv } from "./csv";
 import { moveRowsToTasks } from "./moveRows";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePageTree } from "@/lib/hooks/usePageTree";
@@ -18,6 +18,7 @@ import { BoardView, CalendarView, GalleryView, ListView, TableView, TimelineView
 import { Choice, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
 import { DateText } from "./DatePicker";
 
+const ImportWizard = dynamic(() => import("@/components/import/ImportWizard").then((m) => m.ImportWizard), { ssr: false });
 const PageView = dynamic(() => import("@/components/editor/PageView").then((m) => m.PageView), { ssr: false });
 
 const VIEW_ICON: Record<ViewType, typeof Table> = {
@@ -212,24 +213,22 @@ function MoveToTasks({ db, onDone }: { db: Db; onDone: (note: string) => void })
 function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: DatabaseRow[] }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const file = useRef<HTMLInputElement>(null);
-  const importFile = async (f?: File) => {
-    if (!f) return;
-    try {
-      const table = parseCsv(await f.text());
-      if (table.length < 2) return setNote("O arquivo não tem linhas para importar.");
-      const plan = planImport(table, db.schema);
-      await db.importRows(plan.schema, plan.rows);
-      setNote(`${plan.rows.length} linha(s) importada(s).`);
-    } catch { setNote("Não foi possível importar o arquivo."); }
+  const [importing, setImporting] = useState(false);
+  const exportDb = async () => {
+    setNote("Preparando o arquivo…");
+    try { await (await import("@/lib/export/zip")).exportZip(db.id); setNote(null); setOpen(false); }
+    catch { setNote("Não foi possível exportar."); }
   };
   return (
+    <>
+    {importing && <ImportWizard databaseId={db.id} onClose={() => setImporting(false)} />}
     <Pop open={open} onOpenChange={(o) => { setOpen(o); if (o) setNote(null); }} width={230} align="end" triggerClass={toolbarBtn}
       trigger={<MoreHorizontal size={13} aria-label="Mais ações do banco" />}>
       <button type="button" className={menuItem} onClick={() => { downloadCsv(db.page?.title ?? "banco", toCsv(rows, visibleProps(db.schema, view), db.ctx)); setOpen(false); }}>
         <Download size={14} /> Exportar CSV (esta visão)
       </button>
-      <button type="button" className={menuItem} onClick={() => file.current?.click()}><Upload size={14} /> Importar CSV</button>
+      <button type="button" className={menuItem} onClick={() => void exportDb()}><Download size={14} /> Exportar banco (.zip)</button>
+      <button type="button" className={menuItem} onClick={() => { setOpen(false); setImporting(true); }}><Upload size={14} /> Importar do Notion (.zip/.csv)</button>
       {db.schema.some((c) => c.type === "date") && <p className="px-2 pb-0.5 pt-2 text-[11px] text-[var(--n-text-faint)]">Sincronizar com o Google Agenda</p>}
       {db.schema.filter((c) => c.type === "date").map((c) => {
         const on = db.page?.row_properties?.__calendarSync === c.id;
@@ -240,10 +239,10 @@ function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: 
           </label>
         );
       })}
-      <input ref={file} type="file" accept=".csv,text/csv" hidden aria-label="Arquivo CSV" onChange={(e) => { void importFile(e.target.files?.[0]); e.target.value = ""; }} />
       <MoveToTasks db={db} onDone={setNote} />
       {note && <p role="status" className="px-2 py-1 text-xs text-[var(--n-text-muted)]">{note}</p>}
     </Pop>
+    </>
   );
 }
 

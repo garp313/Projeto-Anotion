@@ -115,7 +115,7 @@ function SelectField({ col, row, db, compact, dense }: CellProps) {
     <Pop
       open={open} onOpenChange={setOpen} triggerClass={cellBox}
       trigger={current.length
-        ? <span className="flex flex-wrap gap-1">{current.map((o) => <OptionTag key={o.id} option={o} />)}</span>
+        ? <span className={`flex min-w-0 gap-1 ${dense ? "overflow-hidden" : "flex-wrap"}`}>{current.map((o) => <OptionTag key={o.id} option={o} />)}</span>
         : <Empty compact={compact} dense={dense} />}
     >
       <input

@@ -335,16 +335,6 @@ export function useDatabase(databaseId: string) {
     await setTemplates([...templates, { id: newId("t_"), name: title || "Modelo sem nome", title, icon, row_properties, content_json: data?.content_json ?? [] }]);
   };
 
-  const importRows = async (next: ColumnSchema[], list: { title: string; row_properties: Record<string, any> }[]) => {
-    const workspace_id = page.data?.workspace_id;
-    await saveSchema(next);
-    const now = Date.now();
-    const { error } = await supabase.from("pages").insert(list.map((r, i) => ({ ...r, workspace_id, parent_id: databaseId, position: now + i })));
-    if (error) throw error;
-    qc.invalidateQueries({ queryKey: rowsKey });
-    qc.invalidateQueries({ queryKey: ["pages"] });
-  };
-
   const addColumn = (col: Omit<ColumnSchema, "id">) => {
     const created = { ...col, id: newId("p_") };
     void saveSchema([...schema, created]);
@@ -357,7 +347,7 @@ export function useDatabase(databaseId: string) {
     isLoading: rowsQuery.isLoading || page.isLoading,
     error: rowsQuery.error ?? page.error,
     saveSchema, saveColumn, addColumn, removeColumn, linkRelation, unlinkMirror, addSelfRelation, createRelated, setViews, saveView,
-    templates, setTemplates, saveTemplate, importRows, setCalendarSync,
+    templates, setTemplates, saveTemplate, setCalendarSync,
     addRow: (init?: NewRow) => addRow.mutateAsync(init ?? {}),
     setValue: (rowId: string, colId: string, value: any) => setValue.mutate({ rowId, colId, value }),
     removeRow: (rowId: string) => removeRows.mutate([rowId]),

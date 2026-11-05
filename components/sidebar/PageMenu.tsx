@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Copy, CopyPlus, CornerUpRight, FileText, Link2, Pencil, Printer, Star, Trash2 } from "lucide-react";
+import { Archive, ArrowLeft, Copy, CopyPlus, CornerUpRight, FileText, Link2, Pencil, Printer, Star, Trash2 } from "lucide-react";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import { fieldClass, menuItem } from "@/components/database/ui";
@@ -64,6 +64,7 @@ export function PageMenu({ pageId, onClose, onRename }: { pageId: string; onClos
       </button>
       <button type="button" className={menuItem} onClick={() => setMoving(true)}><CornerUpRight size={14} /> Mover para</button>
       <button type="button" className={menuItem} onClick={() => { onClose(); setTimeout(() => window.print(), 100); }}><Printer size={14} /> Exportar PDF</button>
+      <button type="button" className={menuItem} onClick={async () => { onClose(); await (await import("@/lib/export/zip")).exportZip(pageId); }}><Archive size={14} /> Exportar página (.zip)</button>
       <div className="my-1 border-t border-[var(--n-border)]" />
       <button type="button" className={`${menuItem} text-red-500`} onClick={() => { archivePage.mutate(pageId); onClose(); }}>
         <Trash2 size={14} /> Mover para a lixeira

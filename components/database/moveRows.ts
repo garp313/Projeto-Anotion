@@ -9,7 +9,8 @@ const sameKind = (a: ColumnSchema, b: ColumnSchema) =>
 
 /** Procura a coluna equivalente pelo nome; sem equivalente, copia para não perder o dado. */
 function targetColumn(source: ColumnSchema, schema: ColumnSchema[]) {
-  const named = schema.find((c) => c.name.toLowerCase() === source.name.toLowerCase());
+  const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  const named = schema.find((c) => fold(c.name) === fold(source.name));
   if (named && sameKind(source, named)) return named;
   const copy: ColumnSchema = { ...source, id: newId("p_"), name: named ? `${source.name} (demandas)` : source.name };
   schema.push(copy);
@@ -29,7 +30,7 @@ function targetOption(option: SelectOption, target: ColumnSchema) {
  * Leva as linhas de uma tabela interna de projeto para o banco Tarefas, ligadas ao projeto.
  * As linhas mudam de lugar, com conteúdo e comentários, e a tabela vazia vai para a lixeira.
  */
-export async function moveRowsToTasks(qc: QueryClient, sourceId: string) {
+export async function moveRowsToTasks(qc: QueryClient, sourceId: string, importId?: string) {
   const supabase = createClient();
   const { data: source, error } = await supabase.from("pages").select("id,parent_id,database_schema").eq("id", sourceId).single();
   if (error) throw error;
@@ -68,15 +69,19 @@ export async function moveRowsToTasks(qc: QueryClient, sourceId: string) {
   // Esquema primeiro: nenhuma linha pode chegar apontando para coluna ou opção que ainda não existe.
   const written = await supabase.from("pages").update({ database_schema: schema }).eq("id", tasks.id);
   if (written.error) throw written.error;
-  for (const row of moved) {
-    const { error: moveError } = await supabase.from("pages").update({ parent_id: tasks.id, row_properties: row.props }).eq("id", row.id);
-    if (moveError) throw moveError;
-  }
+  // Silencioso: mover não é atribuir. Pelo caminho normal, cada linha geraria aviso e e-mail.
+  const quiet = async (id: string, patch: Record<string, unknown>) => {
+    const { error: e } = await supabase.rpc("quiet_update", { p_page: id, p_patch: patch });
+    if (!e) return;
+    if (e.code !== "PGRST202") throw e;
+    const fallback = await supabase.from("pages").update(patch).eq("id", id);
+    if (fallback.error) throw fallback.error;
+  };
+  for (const row of moved) await quiet(row.id, { parent_id: tasks.id, row_properties: row.props });
   if (link?.relationSyncProp && project) {
     const cur: string[] = project.row_properties?.[link.relationSyncProp] ?? [];
-    await supabase.from("pages").update({
-      row_properties: { ...project.row_properties, [link.relationSyncProp]: [...new Set([...cur, ...moved.map((r) => r.id)])] },
-    }).eq("id", project.id);
+    if (importId) await supabase.rpc("import_snapshot", { p_import: importId, p_page: project.id });
+    await quiet(project.id, { row_properties: { ...project.row_properties, [link.relationSyncProp]: [...new Set([...cur, ...moved.map((r) => r.id)])] } });
   }
   await supabase.from("pages").update({ is_archived: true }).eq("id", sourceId);
 
