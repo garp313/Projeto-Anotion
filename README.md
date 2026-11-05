@@ -2,7 +2,7 @@
 
 1. `npm install`
 2. Crie um projeto no Supabase e rode, nesta ordem, no SQL Editor:
-   as migrations de `supabase/migrations/`, de `0001` a `0007`.
+   as migrations de `supabase/migrations/`, de `0001` a `0008`.
 3. Copie `.env.example` para `.env.local` e preencha URL e anon key.
 4. Em Authentication > Providers > Email, mantenha "Confirm email" ativado. Quem tem e-mail @usereserva.com entra
    sem convite, então sem confirmação qualquer um se cadastraria com um endereço que não é dele.
@@ -17,8 +17,8 @@
   No cliente OAuth do Google, autorize também a URI `http://localhost:3000/api/google/callback` e a equivalente da produção.
   Conectar o Google não troca quem está logado no app.
 
-Avisos por e-mail saem do Gmail de quem fez a ação, se essa pessoa tiver conectado o Google.
-Prazos e lembretes aparecem só no Inbox.
+Só o convite e a atribuição de tarefa vão por e-mail, pelo Gmail de quem fez a ação (a pessoa precisa ter conectado o Google).
+Menções, comentários, status e prazos aparecem só no Inbox.
 
 ## Atalhos
 

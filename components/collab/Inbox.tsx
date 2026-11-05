@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlarmClock, AtSign, Bell, CircleDot, MessageSquare, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { connectGoogle, notMigrated, useGoogleStatus, type Notification } from "@/lib/collab";
+import { connectGoogle, notMigrated, type Notification } from "@/lib/collab";
 import { loadTasks, type Task } from "@/lib/tasks";
 import { formatDateValue } from "@/components/database/values";
 import { EmailsPanel } from "./EmailsPanel";
@@ -31,11 +31,6 @@ export function Inbox() {
   const supabase = createClient();
   const [me, setMe] = useState<{ id: string; names: string[] } | null>(null);
   const [tab, setTab] = useState<"alerts" | "emails">("alerts");
-  const { data: google } = useGoogleStatus();
-  const digest = useMutation({
-    mutationFn: async (enabled: boolean) => { await supabase.rpc("set_daily_digest", { enabled }); },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["google-status"] }),
-  });
   useEffect(() => {
     createClient().auth.getSession().then(({ data }) => {
       const u = data.session?.user;
@@ -82,11 +77,6 @@ export function Inbox() {
           {/* Quem já conectou só a Agenda precisa autorizar o envio de novo. */}
           <button type="button" onClick={() => void connectGoogle()}
             className="rounded px-2 py-1 text-xs text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">Autorizar e-mails pelo Gmail</button>
-          {google && (
-            <label className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--n-text-muted)]">
-              <input type="checkbox" checked={google.daily_digest} className="accent-[var(--n-accent)]" onChange={(e) => digest.mutate(e.target.checked)} /> Resumo às 8h
-            </label>
-          )}
         </span>
       </div>
 
