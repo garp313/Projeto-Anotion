@@ -43,7 +43,9 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
       return { shares: shares.data ?? [], team: team.data ?? [], invites: (invites.data ?? []).filter((i) => !i.page_id || i.page_id === pageId) };
     },
   });
-  const refresh = () => { qc.invalidateQueries({ queryKey: ["access", pageId] }); qc.invalidateQueries({ queryKey: ["members"] }); };
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["access", pageId] }); qc.invalidateQueries({ queryKey: ["members"] }); qc.invalidateQueries({ queryKey: ["team-members"] }); };
+  const accessFailed = (e: { code?: string; message?: string }) =>
+    setNote(notMigrated(e) ? "Falta rodar a migration 0014 no Supabase." : e.code === "42501" && e.message ? e.message : "Não foi possível alterar o acesso.");
 
   const invite = useMutation({
     mutationFn: async () => {
@@ -67,11 +69,12 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
         ? supabase.from("invites").update({ role: next }).eq("id", a.inviteId!)
         : a.table === "page_shares"
           ? supabase.from("page_shares").update({ role: next }).eq("page_id", pageId).eq("user_id", a.userId!)
-          : supabase.from("workspace_members").update({ role: next }).eq("workspace_id", workspaceId).eq("user_id", a.userId!);
+          : supabase.rpc("set_member_role", { p_user: a.userId!, p_role: next });
       const { error } = await q;
       if (error) throw error;
     },
     onSuccess: refresh,
+    onError: accessFailed,
   });
   const revoke = useMutation({
     mutationFn: async (a: Access) => {
@@ -79,11 +82,12 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
         ? supabase.from("invites").delete().eq("id", a.inviteId!)
         : a.table === "page_shares"
           ? supabase.from("page_shares").delete().eq("page_id", pageId).eq("user_id", a.userId!)
-          : supabase.from("workspace_members").delete().eq("workspace_id", workspaceId).eq("user_id", a.userId!);
+          : supabase.rpc("remove_member", { p_user: a.userId! });
       const { error } = await q;
       if (error) throw error;
     },
     onSuccess: refresh,
+    onError: accessFailed,
   });
 
   if (notMigrated(access.error as any)) return <p className="p-2 text-xs text-[var(--n-text-muted)]">Compartilhar fica disponível depois de rodar a migration 0003.</p>;
@@ -144,8 +148,12 @@ function Panel({ pageId, workspaceId }: { pageId: string; workspaceId: string })
               <span title={a.label} className="block truncate text-sm">{a.label}</span>
               <span className="block text-[11px] text-[var(--n-text-faint)]">{a.note}</span>
             </span>
-            <Choice label={`Papel de ${a.label}`} width={150} value={a.role} options={ROLES} onChange={(next) => changeRole.mutate({ a, role: next })} />
-            <button type="button" aria-label={`Remover acesso de ${a.label}`} onClick={() => revoke.mutate(a)} className="rounded p-1 hover:bg-[var(--n-hover)]"><X size={13} /></button>
+            {(a.role as string) === "admin" ? <span className="px-1.5 text-xs text-[var(--n-text-muted)]">Administrador</span> : (
+              <>
+                <Choice label={`Papel de ${a.label}`} width={150} value={a.role} options={ROLES} onChange={(next) => changeRole.mutate({ a, role: next })} />
+                <button type="button" aria-label={`Remover acesso de ${a.label}`} onClick={() => revoke.mutate(a)} className="rounded p-1 hover:bg-[var(--n-hover)]"><X size={13} /></button>
+              </>
+            )}
           </div>
         ))}
       </div>

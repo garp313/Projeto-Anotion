@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { ChevronsUpDown, LogOut } from "lucide-react";
+import { ChevronsUpDown, LogOut, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -41,6 +41,9 @@ export function WorkspaceSwitcher({ name = "Workspace" }: { name?: string }) {
             <Menu.Item key={value} onSelect={() => applyTheme(value)} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--n-hover)]">{label}</Menu.Item>
           ))}
           <Menu.Separator className="my-1 h-px bg-[var(--n-border)]" />
+          <Menu.Item onSelect={() => router.push("/time")} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--n-hover)]">
+            <Users size={14} /> Time e permissões
+          </Menu.Item>
           <Menu.Item onSelect={signOut} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--n-hover)]">
             <LogOut size={14} /> Sair
           </Menu.Item>
