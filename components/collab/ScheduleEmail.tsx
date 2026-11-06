@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Mail, Send, Trash2 } from "lucide-react";
+import { Calendar, Mail, Send, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { connectGoogle, memberName, notMigrated, useMembers } from "@/lib/collab";
 import { Choice, Pop, fieldClass, toolbarBtn } from "@/components/database/ui";
-import { DateText } from "@/components/database/DatePicker";
+import { DateText, MonthGrid } from "@/components/database/DatePicker";
 import { REPEAT_LABEL, addDays, firstSendOn, todayInBrazil, type Repeat, type ScheduledEmail } from "@/lib/scheduledEmail";
 
 const REPEATS = (Object.keys(REPEAT_LABEL) as Repeat[]).map((value) => ({ value, label: REPEAT_LABEL[value] }));
@@ -37,6 +37,7 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
   const [days, setDays] = useState<number[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
+  const [calendar, setCalendar] = useState(false);
   const subjectText = subject ?? `Preencher: ${title || "Sem título"}`;
 
   const list = useQuery({
@@ -70,23 +71,29 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
     onError: () => setNote("Não foi possível cancelar. Tente de novo."),
   });
   const sendNow = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch("/api/scheduled-emails/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    mutationFn: async (body: { id: string } | { pageId: string; recipients: string[]; subject: string; message: string }) => {
+      const res = await fetch("/api/scheduled-emails/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       return await res.json() as { sent?: number; failed?: number; reason?: string };
     },
-    onSuccess: (r) => {
+    onSuccess: (r, body) => {
       setDisconnected(r.reason === "not_connected");
-      setNote(r.sent ? `Enviado para ${r.sent} pessoa(s).${r.failed ? ` ${r.failed} não receberam.` : ""}` : "Nada foi enviado.");
+      setNote(r.sent ? `Enviado para ${r.sent} pessoa(s).${r.failed ? ` ${r.failed} não receberam.` : ""}`
+        : r.reason === "not_connected" ? "Conecte o Google para enviar." : "Nada foi enviado.");
+      if (r.sent && !("id" in body)) setPicked([]);
       qc.invalidateQueries({ queryKey: key });
     },
     onError: () => setNote("Não foi possível enviar. Tente de novo."),
   });
 
-  const submit = () => {
+  const ready = () => {
     setNote(null);
-    if (!picked.length) return setNote("Escolha ao menos uma pessoa.");
-    if (!subjectText.trim() || !message.trim()) return setNote("Preencha o assunto e a mensagem.");
-    if (date <= todayInBrazil()) return setNote("Escolha uma data a partir de amanhã. Para hoje, programe e use Enviar agora.");
+    if (!picked.length) { setNote("Escolha ao menos uma pessoa."); return false; }
+    if (!subjectText.trim() || !message.trim()) { setNote("Preencha o assunto e a mensagem."); return false; }
+    return true;
+  };
+  const submit = () => {
+    if (!ready()) return;
+    if (date <= todayInBrazil()) return setNote("Escolha uma data a partir de amanhã. Para hoje, use Enviar agora.");
     if (repeat !== "none" && !days.length) return setNote("Escolha ao menos um dia para repetir.");
     create.mutate();
   };
@@ -116,7 +123,15 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
             <label className="block"><span className={label}>Mensagem</span>
               <textarea value={message} maxLength={5000} rows={3} onChange={(e) => setMessage(e.target.value)} className={`${fieldClass} resize-y`} /></label>
             <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1"><span className={label}>{repeat === "none" ? "Enviar em" : "A partir de"}</span><DateText label="Data do envio" value={date} onCommit={setDate} /></div>
+              <div className="min-w-0 flex-1"><span className={label}>{repeat === "none" ? "Enviar em" : "A partir de"}</span>
+                <div className="flex items-center gap-1">
+                  <div className="min-w-0 flex-1"><DateText label="Data do envio" value={date} onCommit={setDate} /></div>
+                  <Pop open={calendar} onOpenChange={setCalendar} width={260} triggerClass="shrink-0 rounded border border-[var(--n-border)] p-1.5 hover:bg-[var(--n-hover)]"
+                    trigger={<Calendar size={14} aria-label="Abrir calendário" />}>
+                    <MonthGrid start={date} onPick={(d) => { setDate(d); setCalendar(false); }} />
+                  </Pop>
+                </div>
+              </div>
               <div><span className={label}>Repetir</span><Choice label="Repetir" value={repeat} options={REPEATS} onChange={(r) => { setRepeat(r); setDays(dayOf(date, r)); }} /></div>
             </div>
             {repeat !== "none" && (
@@ -135,8 +150,12 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
               </div>
             )}
             <p className="text-xs text-[var(--n-text-faint)]">Sai do seu Gmail por volta das 8h, com o link desta página.</p>
-            <button type="button" disabled={create.isPending} onClick={submit}
-              className="w-full rounded bg-[var(--n-accent)] px-2 py-1 text-xs font-medium text-white disabled:opacity-60">Programar</button>
+            <div className="flex gap-2">
+              <button type="button" disabled={sendNow.isPending} onClick={() => { if (ready()) sendNow.mutate({ pageId, recipients: picked, subject: subjectText.trim(), message: message.trim() }); }}
+                className="flex-1 rounded border border-[var(--n-border)] px-2 py-1 text-xs font-medium hover:bg-[var(--n-hover)] disabled:opacity-60">Enviar agora</button>
+              <button type="button" disabled={create.isPending} onClick={submit}
+                className="flex-1 rounded bg-[var(--n-accent)] px-2 py-1 text-xs font-medium text-white disabled:opacity-60">Programar</button>
+            </div>
             {note && <p role="status" className="text-xs text-[var(--n-text-muted)]">{note}</p>}
             {disconnected && <button type="button" onClick={() => void connectGoogle()} className="text-xs text-[var(--n-accent)] hover:underline">Conectar o Google</button>}
 
@@ -148,7 +167,7 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
                       <span className="block truncate">{toBr(s.send_on)} · {daysLabel(s)} · {s.recipients.length} pessoa(s)</span>
                       {s.last_error && <span role="alert" className="block text-red-500">{s.last_error === "not_connected" ? "Não enviado: conecte o Google." : s.last_error === "failed" ? "Não enviado. Nova tentativa amanhã." : s.last_error}</span>}
                     </span>
-                    <button type="button" aria-label="Enviar agora" title="Enviar agora" disabled={sendNow.isPending} onClick={() => sendNow.mutate(s.id)} className="rounded p-1 hover:bg-[var(--n-hover)]"><Send size={12} /></button>
+                    <button type="button" aria-label="Enviar agora" title="Enviar agora" disabled={sendNow.isPending} onClick={() => sendNow.mutate({ id: s.id })} className="rounded p-1 hover:bg-[var(--n-hover)]"><Send size={12} /></button>
                     <button type="button" aria-label="Cancelar envio" title="Cancelar envio" onClick={() => cancel.mutate(s.id)} className="rounded p-1 hover:bg-[var(--n-hover)]"><Trash2 size={12} /></button>
                   </li>
                 ))}

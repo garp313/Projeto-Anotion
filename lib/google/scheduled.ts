@@ -4,7 +4,7 @@ import { sendGmail } from "./gmail";
 import { nextSendOn, type ScheduledEmail } from "@/lib/scheduledEmail";
 
 /** Envia para cada pessoa. Sem token, usa a sessão de quem está logado. */
-export async function sendToRecipients(row: ScheduledEmail, origin: string, token?: string) {
+export async function sendToRecipients(row: Pick<ScheduledEmail, "page_id" | "recipients" | "subject" | "message">, origin: string, token?: string) {
   const failed: string[] = [];
   let sent = 0;
   let reason: string | undefined;

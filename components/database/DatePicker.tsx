@@ -112,7 +112,7 @@ export function TimeText({ value, onCommit, label }: { value: string; onCommit: 
 
 const WEEK = ["D", "S", "T", "Q", "Q", "S", "S"];
 
-function MonthGrid({ start, end, onPick }: { start?: string; end?: string | null; onPick: (iso: string) => void }) {
+export function MonthGrid({ start, end, onPick }: { start?: string; end?: string | null; onPick: (iso: string) => void }) {
   const [month, setMonth] = useState(() => {
     const y = Number(start?.slice(0, 4));
     const d = start && y >= 1900 ? new Date(y, Number(start.slice(5, 7)) - 1, 1) : new Date();
