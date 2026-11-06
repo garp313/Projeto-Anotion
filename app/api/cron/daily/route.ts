@@ -4,6 +4,8 @@ import { accessTokenFor } from "@/lib/google/tokens";
 import { listMessages } from "@/lib/google/gmail";
 import { createTaskFromMessage, defaultTaskDatabase } from "@/lib/google/emailTask";
 import { ensureChannel, sameSecret } from "@/lib/google/sync";
+import { sendDueEmails } from "@/lib/google/scheduled";
+import { todayInBrazil } from "@/lib/scheduledEmail";
 
 const LABEL_QUERY = 'label:"→Tarefa" newer_than:30d';
 export async function GET(req: Request) {
@@ -15,7 +17,8 @@ export async function GET(req: Request) {
   if (!admin) return NextResponse.json({ error: "not_configured" }, { status: 503 });
   const origin = new URL(req.url).origin;
   const { data: accounts } = await admin.from("google_accounts").select("user_id").eq("status", "ok");
-  const report = { labeled: 0, channels: 0, failed: 0 };
+  const scheduled = await sendDueEmails(admin, origin, todayInBrazil()).catch((e) => { console.error(e); return { sent: 0, failed: 1 }; });
+  const report = { labeled: 0, channels: 0, failed: 0, scheduled };
 
   for (const account of accounts ?? []) {
     try {

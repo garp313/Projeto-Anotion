@@ -5,6 +5,7 @@ import { nameMatch, parseCheckbox, parseDate, parseMulti, parseNumber, parsePerc
 import { parseCsvText, readNotionZip, splitMarkdown } from "@/lib/import/notionZip";
 import { applyToSchema, convertRow, detectType, suggestColumns, suggestPeople, suggestValues, type DbPlan } from "@/lib/import/mapping";
 import { isAssignedTo } from "@/lib/assignee";
+import { nextSendOn, todayInBrazil } from "@/lib/scheduledEmail";
 import type { ColumnSchema } from "@/components/database/types";
 
 describe("parseDate", () => {
@@ -163,6 +164,17 @@ describe("plano no formato real", () => {
 
 describe("coluna criada pela importação", () => {
   it("volta como texto, não como pessoa", () => expect(detectType("Responsáveis (Notion)", ["Humberto Barbatti"])).toBe("text"));
+});
+
+describe("e-mail programado", () => {
+  it("sem repetição não tem próximo envio", () => expect(nextSendOn("2026-11-10", "none", "2026-11-10")).toBe(null));
+  it("semana seguinte", () => expect(nextSendOn("2026-11-10", "weekly", "2026-11-10")).toBe("2026-11-17"));
+  it("mês seguinte", () => expect(nextSendOn("2026-11-10", "monthly", "2026-11-10")).toBe("2026-12-10"));
+  it("dia 31 em fevereiro cai no último dia", () => expect(nextSendOn("2027-01-31", "monthly", "2027-01-31")).toBe("2027-02-28"));
+  it("depois de fevereiro volta ao dia 31", () => expect(nextSendOn("2027-01-31", "monthly", "2027-02-28")).toBe("2027-03-31"));
+  it("virada do ano", () => expect(nextSendOn("2026-12-15", "monthly", "2026-12-15")).toBe("2027-01-15"));
+  it("dias perdidos não acumulam", () => expect(nextSendOn("2026-11-02", "weekly", "2026-11-25")).toBe("2026-11-30"));
+  it("hoje segue o horário de Brasília", () => expect(todayInBrazil(new Date("2026-11-06T02:00:00Z"))).toBe("2026-11-05"));
 });
 
 describe("demanda atribuída", () => {

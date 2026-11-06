@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { createReactBlockSpec, createReactInlineContentSpec, useEditorChange } from "@blocknote/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 
 const DatabaseView = dynamic(() => import("@/components/database/DatabaseView").then((m) => m.DatabaseView), { ssr: false });
@@ -126,8 +126,63 @@ export const BookmarkBlock = createReactBlockSpec(
 const MIN_HEIGHT = 200, MAX_HEIGHT = 1400, MIN_WIDTH = 30;
 
 /** Janela incorporada: largura em % acompanha a tela; a altura fica no valor escolhido. */
+/** Apps com rolagem própria. Num vídeo, travar a página só atrapalharia. */
+const SCROLLS_INSIDE = /(^|\.)(docs|sheets)\.google\.com$/;
+
+/**
+ * O navegador repassa à página a rolagem que o iframe não consome, e a página nem fica sabendo
+ * que o mouse entrou num iframe de outro site. Por isso uma camada invisível percebe a chegada,
+ * trava a página e sai da frente. Com o mouse lá dentro a página não recebe nada: qualquer
+ * movimento que ela veja quer dizer que ele saiu.
+ * Espera a página parar, senão rolar por ela prenderia a pessoa ao passar pela planilha.
+ */
+function useHoldPageScroll() {
+  const [held, setHeld] = useState(false);
+  const release = useRef<() => void>(() => {});
+  useEffect(() => () => release.current(), []);
+
+  const begin = (el: HTMLElement, now: boolean) => {
+    const main = el.closest("main");
+    if (!main) return;
+    release.current();
+    let last = now ? 0 : Date.now();
+    let timer: ReturnType<typeof setTimeout>;
+    const moved = () => { last = Date.now(); };
+    const left = (e: PointerEvent) => { if ((e.target as Element).tagName !== "IFRAME") release.current(); };
+    const hold = () => {
+      if (Date.now() - last < 150) { timer = setTimeout(hold, 50); return; }
+      // A faixa da barra fica reservada: sem isso a janela mudaria de largura a cada passagem do mouse.
+      main.style.scrollbarGutter = "stable";
+      main.style.overflowY = "hidden";
+      document.addEventListener("pointermove", left, true);
+      setHeld(true);
+    };
+    release.current = () => {
+      clearTimeout(timer);
+      main.removeEventListener("scroll", moved);
+      document.removeEventListener("pointermove", left, true);
+      main.style.overflowY = "";
+      main.style.scrollbarGutter = "";
+      setHeld(false);
+      release.current = () => {};
+    };
+    main.addEventListener("scroll", moved, { passive: true });
+    if (now) hold(); else timer = setTimeout(hold, 150);
+  };
+
+  return {
+    held,
+    shield: {
+      onPointerEnter: (e: React.PointerEvent<HTMLElement>) => begin(e.currentTarget, false),
+      onPointerDown: (e: React.PointerEvent<HTMLElement>) => begin(e.currentTarget, true),
+      onPointerLeave: () => release.current(),
+    },
+  };
+}
+
 function EmbedFrame({ url, block, editor }: { url: URL; block: any; editor: any }) {
   const box = useRef<HTMLDivElement>(null);
+  const { held, shield } = useHoldPageScroll();
   const [drag, setDrag] = useState<{ width: number; height: number } | null>(null);
   const width: number = drag?.width ?? block.props.width;
   const height: number = drag?.height ?? block.props.height;
@@ -164,6 +219,10 @@ function EmbedFrame({ url, block, editor }: { url: URL; block: any; editor: any 
       {/* Sobre o iframe o navegador perde o ponteiro: durante o arrasto ele não recebe eventos. */}
       <iframe title={url.hostname} src={url.href} sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
         className={`h-full w-full rounded-md border border-[var(--n-border)] ${drag ? "pointer-events-none" : ""}`} />
+      {/* Só com mouse: no celular a camada engoliria o primeiro toque. */}
+      {SCROLLS_INSIDE.test(url.hostname) && !held && !drag && (
+        <div {...shield} data-testid="embed-shield" className="absolute inset-0 z-[5] hidden [@media(hover:hover)]:block" />
+      )}
       <span role="separator" aria-orientation="vertical" aria-label="Ajustar largura" onPointerDown={(e) => start(e, "x")}
         className={`${handle} right-0 top-1/2 h-12 w-2 -translate-y-1/2 cursor-ew-resize`} />
       <span role="separator" aria-orientation="horizontal" aria-label="Ajustar altura" onPointerDown={(e) => start(e, "y")}

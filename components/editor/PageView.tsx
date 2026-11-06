@@ -20,6 +20,7 @@ import { PageSkeleton } from "./PageSkeleton";
 import { Backlinks } from "./Backlinks";
 import { PageActivity } from "@/components/collab/PageActivity";
 import { ShareMenu } from "@/components/collab/ShareMenu";
+import { ScheduleEmail } from "@/components/collab/ScheduleEmail";
 import { VersionsMenu } from "@/components/collab/VersionsMenu";
 
 // Editor e banco de dados são os trechos mais pesados: cada página baixa só o que usa.
@@ -85,6 +86,7 @@ export function PageView({ pageId }: { pageId: string }) {
           <span aria-current="page" className="truncate px-1 text-[var(--n-text)]">{page.icon} {page.title || "Sem título"}</span>
         </nav>
         <ShareMenu pageId={page.id} workspaceId={page.workspace_id} />
+        <ScheduleEmail pageId={page.id} title={page.title} />
         <button type="button" aria-pressed={fullWidth} title="Largura total"
           onClick={() => {
             const props = { ...page.row_properties, __fullWidth: !fullWidth };
