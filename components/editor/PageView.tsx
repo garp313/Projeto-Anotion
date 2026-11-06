@@ -63,7 +63,7 @@ export function PageView({ pageId }: { pageId: string }) {
   const parentIsDatabase = pages.data?.some((p) => p.id === page.parent_id && p.is_database);
   // Banco de dados abre em largura total, como no Notion; a escolha da pessoa prevalece.
   // Página com banco dentro também: em largura normal a tabela ficava estreita.
-  const holdsDatabase = (page.content_json ?? []).some((b: { type?: string }) => b.type === "database");
+  const holdsDatabase = Array.isArray(page.content_json) && page.content_json.some((b: { type?: string } | null) => b?.type === "database");
   const fullWidth = Boolean(page.row_properties?.__fullWidth ?? (page.is_database || holdsDatabase));
   const useTemplate = async () => {
     const id = await createTaskTemplate(page.workspace_id);
