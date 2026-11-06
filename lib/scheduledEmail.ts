@@ -4,7 +4,7 @@ export const REPEAT_LABEL: Record<Repeat, string> = { none: "Não repetir", week
 
 export type ScheduledEmail = {
   id: string; page_id: string; created_by: string; recipients: string[]; subject: string; message: string;
-  first_send_on: string; send_on: string; repeat: Repeat; active: boolean; last_sent_at: string | null; last_error: string | null;
+  first_send_on: string; send_on: string; repeat: Repeat; repeat_days?: number[]; active: boolean; last_sent_at: string | null; last_error: string | null;
 };
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -25,9 +25,29 @@ function addMonths(date: string, months: number) {
   return iso(new Date(Date.UTC(year, month, Math.min(start.getUTCDate(), lastDay))));
 }
 
+function matchesDay(date: string, repeat: Repeat, days: number[]) {
+  const d = new Date(`${date}T00:00:00Z`);
+  if (repeat === "weekly") return days.includes(d.getUTCDay());
+  const day = d.getUTCDate();
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  // Dia 31 num mês de 30 dias sai no último dia, em vez de pular o mês.
+  return days.includes(day) || (day === last && days.some((x) => x > last));
+}
+
+/** Primeira data a partir de `start` que cai num dos dias escolhidos. */
+export function firstSendOn(start: string, repeat: Repeat, days: number[]) {
+  if (repeat === "none" || !days.length) return start;
+  for (let n = 0; n < 62; n++) {
+    const date = addDays(start, n);
+    if (matchesDay(date, repeat, days)) return date;
+  }
+  return start;
+}
+
 /** Próximo envio depois de hoje, ou null se não repete. Dias perdidos não viram envios acumulados. */
-export function nextSendOn(first: string, repeat: Repeat, today: string): string | null {
+export function nextSendOn(first: string, repeat: Repeat, today: string, days: number[] = []): string | null {
   if (repeat === "none") return null;
+  if (days.length) return firstSendOn(addDays(today > first ? today : first, 1), repeat, days);
   for (let n = 1; ; n++) {
     const next = repeat === "weekly" ? addDays(first, 7 * n) : addMonths(first, n);
     if (next > today) return next;

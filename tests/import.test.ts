@@ -5,7 +5,7 @@ import { nameMatch, parseCheckbox, parseDate, parseMulti, parseNumber, parsePerc
 import { parseCsvText, readNotionZip, splitMarkdown } from "@/lib/import/notionZip";
 import { applyToSchema, convertRow, detectType, suggestColumns, suggestPeople, suggestValues, type DbPlan } from "@/lib/import/mapping";
 import { isAssignedTo } from "@/lib/assignee";
-import { nextSendOn, todayInBrazil } from "@/lib/scheduledEmail";
+import { firstSendOn, nextSendOn, todayInBrazil } from "@/lib/scheduledEmail";
 import type { ColumnSchema } from "@/components/database/types";
 
 describe("parseDate", () => {
@@ -174,6 +174,16 @@ describe("e-mail programado", () => {
   it("depois de fevereiro volta ao dia 31", () => expect(nextSendOn("2027-01-31", "monthly", "2027-02-28")).toBe("2027-03-31"));
   it("virada do ano", () => expect(nextSendOn("2026-12-15", "monthly", "2026-12-15")).toBe("2027-01-15"));
   it("dias perdidos não acumulam", () => expect(nextSendOn("2026-11-02", "weekly", "2026-11-25")).toBe("2026-11-30"));
+  // 2026-11-09 é segunda-feira.
+  it("próximo dia da semana escolhido", () => expect(nextSendOn("2026-11-09", "weekly", "2026-11-09", [1, 3])).toBe("2026-11-11"));
+  it("volta ao primeiro dia na semana seguinte", () => expect(nextSendOn("2026-11-09", "weekly", "2026-11-11", [1, 3])).toBe("2026-11-16"));
+  it("primeiro envio cai no dia escolhido", () => expect(firstSendOn("2026-11-10", "weekly", [1])).toBe("2026-11-16"));
+  it("primeiro envio na própria data, se ela serve", () => expect(firstSendOn("2026-11-09", "weekly", [1])).toBe("2026-11-09"));
+  it("vários dias do mês", () => expect(nextSendOn("2026-11-01", "monthly", "2026-11-01", [1, 15])).toBe("2026-11-15"));
+  it("dia 31 em novembro sai no dia 30", () => expect(nextSendOn("2026-11-01", "monthly", "2026-11-20", [31])).toBe("2026-11-30"));
+  it("dia 30 em fevereiro sai no dia 28", () => expect(nextSendOn("2027-02-01", "monthly", "2027-02-10", [30])).toBe("2027-02-28"));
+  it("antes do início espera a data de início", () => expect(nextSendOn("2026-12-07", "weekly", "2026-11-09", [1])).toBe("2026-12-14"));
+  it("sem dias mantém a regra antiga", () => expect(nextSendOn("2026-11-10", "weekly", "2026-11-10", [])).toBe("2026-11-17"));
   it("hoje segue o horário de Brasília", () => expect(todayInBrazil(new Date("2026-11-06T02:00:00Z"))).toBe("2026-11-05"));
 });
 

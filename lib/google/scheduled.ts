@@ -31,7 +31,7 @@ export async function sendDueEmails(admin: SupabaseClient, origin: string, today
         report.failed++;
         continue;
       }
-      const next = nextSendOn(row.first_send_on, row.repeat, today);
+      const next = nextSendOn(row.first_send_on, row.repeat, today, row.repeat_days ?? []);
       const { data: claimed } = await admin.from("scheduled_emails")
         .update({ send_on: next ?? row.send_on, active: next !== null })
         .eq("id", row.id).eq("active", true).eq("send_on", row.send_on).select("id");
