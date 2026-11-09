@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -437,7 +438,8 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
         : db.isLoading ? <div className="py-12 text-center text-xs text-[var(--n-text-faint)]">Carregando…</div>
         : <Body db={db} view={view} rows={rows} open={setPeek} defaults={defaults} />}
 
-      {peek && (
+      {/* Fora do editor da página: dentro dele, o editor de fora achava os blocos do painel e quebrava. */}
+      {peek && createPortal(
         <>
           <button type="button" aria-label="Fechar painel" onClick={() => setPeek(null)} className="fixed inset-0 z-40 cursor-default bg-black/10" />
           <aside aria-label="Página da linha" className="n-scroll fixed inset-y-0 right-0 z-50 w-full max-w-[720px] overflow-y-auto border-l border-[var(--n-border)] bg-[var(--n-bg)] shadow-2xl">
@@ -447,7 +449,8 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
             </div>
             <PageView key={peek} pageId={peek} />
           </aside>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );
