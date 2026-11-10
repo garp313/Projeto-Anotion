@@ -282,6 +282,8 @@ function databasesFor(qc: ReturnType<typeof useQueryClient>) {
   return all.filter((p) => p.is_database && !(p.parent_id && ids.has(p.parent_id)));
 }
 
+const MAX_CHIPS = 12;
+
 function RelationField({ col, row, db, compact, dense }: CellProps) {
   const router = useRouter();
   const ids: string[] = rawValue(col, row, db.ctx) ?? [];
@@ -308,16 +310,18 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   };
   return (
     <Pop triggerClass={cellBox}
-      trigger={chosen.length > (dense ? 1 : 6)
-        // Lista longa vira contagem: 100 chips empurravam o resto da página para baixo.
-        ? <span className="text-sm text-[var(--n-text-muted)]">{chosen.length} itens</span>
+      trigger={dense && chosen.length > 1
+        // Na tabela, os nomes por escrito numa linha; a lista inteira aparece ao parar o mouse.
+        ? <span title={chosen.map(label).join(", ")} className="block min-w-0 truncate text-sm">{chosen.map(label).join(", ")}</span>
         : chosen.length
         ? <span className={`flex min-w-0 gap-1 ${dense ? "overflow-hidden" : "flex-wrap"}`}>
-            {chosen.map((r) => (
+            {chosen.slice(0, MAX_CHIPS).map((r) => (
               <span key={r.id} role="link" title={label(r)}
                 onClick={(e) => { e.stopPropagation(); e.preventDefault(); router.push(`/workspace/${r.id}`); }}
                 className="min-w-0 max-w-full shrink-0 cursor-pointer truncate rounded bg-[var(--n-hover)] px-1.5 text-sm hover:bg-[var(--n-active)]">{label(r)}</span>
             ))}
+            {/* Mais que isso empurrava o resto da página para baixo. */}
+            {chosen.length > MAX_CHIPS && <span className="text-sm text-[var(--n-text-muted)]">+{chosen.length - MAX_CHIPS}</span>}
           </span>
         : <Empty compact={compact} dense={dense} />}>
       <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ou criar…" className={`${fieldClass} mb-1`}
