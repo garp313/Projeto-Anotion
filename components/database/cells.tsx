@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { DatePicker } from "./DatePicker";
-import { Check, ExternalLink, FileUp, Link2, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, FileUp, Link2, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { ChecklistItem, ColumnSchema, DatabaseRow, FileValue, PersonValue, SelectOption, StatusGroup } from "./types";
 import { COLORS, READ_ONLY, newId } from "./types";
@@ -284,6 +284,26 @@ function databasesFor(qc: ReturnType<typeof useQueryClient>) {
 
 const MAX_CHIPS = 12;
 
+/** O banco ligado foi excluído: sem isto o campo só dizia "Nenhuma página encontrada" e parecia quebrado. */
+function MissingRelation({ col, db, compact }: Pick<CellProps, "col" | "db" | "compact">) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const options = databasesFor(qc).filter((d) => d.id !== col.relationDatabaseId);
+  return (
+    <Pop triggerClass={cellBox} width={280}
+      trigger={<span className="flex min-w-0 items-center gap-1 text-xs text-orange-600"><AlertTriangle size={12} className="shrink-0" /><span className="truncate">{compact ? "Banco excluído" : "Banco relacionado excluído — escolha outro"}</span></span>}>
+      <p role="alert" className="px-2 py-1 text-xs text-orange-600">Banco relacionado excluído — escolha outro banco para “{col.name}”:</p>
+      {options.map((d) => (
+        <button key={d.id} type="button" disabled={busy} className={`${menuItem} disabled:opacity-60`}
+          onClick={async () => { setBusy(true); try { await db.linkRelation(col, d.id); } finally { setBusy(false); } }}>
+          <span className="truncate">{d.icon} {d.title || "Sem título"}</span>
+        </button>
+      ))}
+      {!options.length && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Não há outro banco neste espaço de trabalho.</p>}
+    </Pop>
+  );
+}
+
 function RelationField({ col, row, db, compact, dense }: CellProps) {
   const router = useRouter();
   const ids: string[] = rawValue(col, row, db.ctx) ?? [];
@@ -294,6 +314,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   const [picked, setPicked] = useState<{ id: string; title: string } | null>(null);
   const qc = useQueryClient();
   if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
+  if (target.missing) return <MissingRelation col={col} db={db} compact={compact || dense} />;
   const label = (r: DatabaseRow) => relatedLabel(col, r, db.ctx);
   const needle = q.trim().toLowerCase();
   // Busca pelo nome e pela coluna mostrada: quem escolheu "Atribuir" procura pela pessoa.

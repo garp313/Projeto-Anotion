@@ -115,6 +115,8 @@ export function usePageTree() {
       qc.invalidateQueries({ queryKey: ["pages"] });
       qc.invalidateQueries({ queryKey: ["trash"] });
       qc.invalidateQueries({ queryKey: ["database_rows"] });
+      // Relações que apontam para um banco excluído passam a avisar na hora.
+      ids.forEach((id) => qc.invalidateQueries({ queryKey: ["page", id] }));
       if (ids.has(window.location.pathname.split("/").pop() ?? "")) router.push("/workspace");
     },
   });

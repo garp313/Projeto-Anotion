@@ -1,5 +1,5 @@
 "use client";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BookmarkPlus, ChevronLeft, ChevronRight, Copy, GripVertical, Maximize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import type { ColumnSchema, DatabaseRow, DatabaseViewConfig, RollupFn } from "./types";
 import { DEFAULT_STATUS_OPTIONS, READ_ONLY } from "./types";
@@ -37,7 +37,9 @@ function QuickTitle({ row, db, onDone, className = "" }: { row: DatabaseRow; db:
   const [text, setText] = useState(row.title);
   const finish = (save: boolean) => {
     const title = db.schema.find((c) => c.type === "title");
-    if (save && title && text.trim() && text !== row.title) db.setValue(row.id, title.id, text.trim());
+    // Esc ou sair sem digitar nada desfaz a criação: antes ficava um "Sem título" no quadro.
+    if (!text.trim() && !row.title) void db.discardRow(row.id);
+    else if (save && title && text.trim() && text !== row.title) db.setValue(row.id, title.id, text.trim());
     onDone();
   };
   return (
@@ -450,24 +452,112 @@ export function GalleryView({ db, view, rows, open, defaults }: ViewProps) {
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const dateCol = (db: Db, view: DatabaseViewConfig) => db.schema.find((c) => c.id === view.dateProp) ?? db.schema.find((c) => c.type === "date");
-const NoDate = () => <p className="py-10 text-center text-sm text-[var(--n-text-faint)]">Adicione uma propriedade de Data para usar esta visão.</p>;
+/** Sem data não há visão: o botão cria a propriedade e já aponta a visão para ela. */
+function NoDate({ db, view, kind }: { db: Db; view: DatabaseViewConfig; kind: "calendar" | "timeline" }) {
+  return (
+    <div className="py-10 text-center">
+      <p className="mb-3 text-sm text-[var(--n-text-muted)]">
+        {kind === "timeline" ? "A linha do tempo precisa de uma propriedade de Data, com início e fim." : "O calendário precisa de uma propriedade de Data."}
+      </p>
+      <button type="button"
+        onClick={() => { const c = db.addColumn({ name: kind === "timeline" ? "Período" : "Data", type: "date" }); void db.saveView({ ...view, dateProp: c.id }); }}
+        className="rounded-md bg-[var(--n-accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-95">Criar propriedade de Data</button>
+    </div>
+  );
+}
+
+const SLOP = 6;
+const HOLD_MS = 350;
+
+/**
+ * Arrastar para um dia com mouse, caneta ou dedo. O arrasto nativo do navegador não funciona no toque;
+ * no toque é preciso segurar um instante antes, senão rolar a tela viraria arrasto.
+ */
+function useDayDrag(onDrop: (id: string, day: string) => void, onTap: (id: string) => void) {
+  const [drag, setDrag] = useState<{ id: string; label: string; x: number; y: number } | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const holding = useRef(false);
+  // O navegador decide no começo do toque se ele pode rolar a tela: o bloqueio precisa já estar registrado.
+  useEffect(() => {
+    const block = (t: TouchEvent) => { if (holding.current) t.preventDefault(); };
+    document.addEventListener("touchmove", block, { passive: false });
+    return () => document.removeEventListener("touchmove", block);
+  }, []);
+  const start = (e: React.PointerEvent, id: string, label: string) => {
+    if (e.button !== 0) return;
+    const x0 = e.clientX, y0 = e.clientY, touch = e.pointerType !== "mouse";
+    let active = false, day: string | null = null, last = { x: x0, y: y0 };
+    const dayAt = (x: number, y: number) => (document.elementFromPoint(x, y)?.closest("[data-day]") as HTMLElement | null)?.dataset.day ?? null;
+    const begin = () => { active = true; holding.current = true; setDrag({ id, label, x: last.x, y: last.y }); navigator.vibrate?.(10); };
+    const timer = touch ? window.setTimeout(begin, HOLD_MS) : 0;
+    const stop = () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", stop);
+      holding.current = false;
+      setDrag(null); setOver(null);
+    };
+    const move = (m: PointerEvent) => {
+      last = { x: m.clientX, y: m.clientY };
+      const far = Math.hypot(m.clientX - x0, m.clientY - y0) > SLOP;
+      if (!active) {
+        // No toque, mexer antes do tempo é rolagem: o navegador cuida.
+        if (touch) { if (far) stop(); return; }
+        if (!far) return;
+        begin();
+      }
+      day = dayAt(m.clientX, m.clientY);
+      setOver(day);
+      setDrag({ id, label, x: m.clientX, y: m.clientY });
+    };
+    const up = () => {
+      const moved = Math.hypot(last.x - x0, last.y - y0) > SLOP;
+      const wasActive = active;
+      stop();
+      if (wasActive) { if (day) onDrop(id, day); }
+      else if (!moved) onTap(id);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", stop);
+  };
+  return { drag, over, start };
+}
+
+const UNDATED_SHOWN = 50;
+const NO_DAY = "none";
 
 export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
   const col = dateCol(db, view);
   const [month, setMonth] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [fresh, setFresh] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
   const [opened, setOpened] = useState<string[]>([]);
+  const [allUndated, setAllUndated] = useState(false);
   const cells = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1 - month.getDay());
     return Array.from({ length: 42 }, (_, i) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + i));
   }, [month]);
-  if (!col) return <NoDate />;
+  const moveTo = (id: string, day: string) => {
+    const r = rows.find((x) => x.id === id);
+    if (!r || !col) return;
+    const cur = asDate(rawValue(col, r, db.ctx));
+    if (day === NO_DAY) { if (cur) db.setValue(id, col.id, null); return; }
+    // Sem data ainda: ganha o dia em que foi solta.
+    if (!cur) return db.setValue(id, col.id, { start: day });
+    const delta = Math.round((parseDay(day).getTime() - parseDay(cur.start.slice(0, 10)).getTime()) / 86_400_000);
+    if (!delta) return;
+    const add = (s: string) => { const x = parseDay(s); x.setDate(x.getDate() + delta); return cur.time ? x.toISOString() : iso(x); };
+    db.setValue(id, col.id, { ...cur, start: add(cur.start), end: cur.end ? add(cur.end) : cur.end });
+  };
+  const { drag, over, start } = useDayDrag(moveTo, open);
+  if (!col) return <NoDate db={db} view={view} kind="calendar" />;
 
   const byDay = new Map<string, DatabaseRow[]>();
+  const undated: DatabaseRow[] = [];
   for (const r of rows) {
     const d = asDate(rawValue(col, r, db.ctx));
-    if (!d) continue;
+    if (!d) { undated.push(r); continue; }
     const end = d.end ? parseDay(d.end) : parseDay(d.start);
     for (let x = parseDay(d.start), n = 0; x <= end && n < 62; x = new Date(x.getFullYear(), x.getMonth(), x.getDate() + 1), n++) {
       const k = iso(x);
@@ -476,14 +566,15 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
   }
   const today = iso(new Date());
   const shift = (n: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1));
-  const moveTo = (id: string, day: string) => {
-    const r = rows.find((x) => x.id === id);
-    const cur = r && asDate(rawValue(col, r, db.ctx));
-    if (!cur) return;
-    const delta = Math.round((parseDay(day).getTime() - parseDay(cur.start.slice(0, 10)).getTime()) / 86_400_000);
-    const add = (s: string) => { const x = parseDay(s); x.setDate(x.getDate() + delta); return cur.time ? x.toISOString() : iso(x); };
-    db.setValue(id, col.id, { ...cur, start: add(cur.start), end: cur.end ? add(cur.end) : cur.end });
-  };
+  // Itens arrastáveis: o clique (ou toque) abre; Enter pelo teclado também.
+  const item = (r: DatabaseRow) => ({
+    onPointerDown: (e: React.PointerEvent) => start(e, r.id, `${r.icon ?? ""} ${titleOf(r)}`.trim()),
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0) open(r.id); },
+    // Segurar no toque abre o menu do navegador, que cancelaria o arrasto.
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    title: titleOf(r),
+  });
+  const chip = "cursor-grab select-none [-webkit-touch-callout:none]";
 
   return (
     <div>
@@ -493,14 +584,15 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
         <button type="button" onClick={() => { const d = new Date(); d.setDate(1); setMonth(d); }} className="rounded px-2 py-0.5 text-xs hover:bg-[var(--n-hover)]">Hoje</button>
         <button type="button" aria-label="Próximo mês" onClick={() => shift(1)} className="rounded p-1 hover:bg-[var(--n-hover)]"><ChevronRight size={15} /></button>
       </div>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
+      <div className="min-w-0 flex-1">
       <ScrollArea>
       <div className="grid min-w-[640px] grid-cols-7 border-l border-t border-[var(--n-border)]">
         {WEEKDAYS.map((d) => <div key={d} className="border-b border-r border-[var(--n-border)] px-1.5 py-1 text-right text-xs text-[var(--n-text-faint)]">{d}</div>)}
         {cells.map((d) => {
           const k = iso(d);
           return (
-            <div key={k} data-day={k} onDragOver={(e) => { e.preventDefault(); setOver(k); }} onDragLeave={() => setOver(null)}
-              onDrop={(e) => { setOver(null); moveTo(e.dataTransfer.getData("text/row"), k); }}
+            <div key={k} data-day={k}
               className={`group min-h-24 min-w-0 border-b border-r border-[var(--n-border)] p-1 ${over === k ? "bg-[var(--n-active)]" : ""} ${d.getMonth() === month.getMonth() ? "" : "opacity-40"}`}>
               <div className="flex items-center">
                 <button type="button" aria-label={`Nova página em ${k}`} onClick={async () => setFresh((await db.addRow({ row_properties: { ...defaults, [col.id]: { start: k } } })).id)}
@@ -510,8 +602,8 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
               {(byDay.get(k) ?? []).slice(0, opened.includes(k) ? undefined : CALENDAR_LIMIT).map((r) => (
                 r.id === fresh
                   ? <QuickTitle key={r.id} row={r} db={db} onDone={() => setFresh(null)} className="mt-0.5 text-xs" />
-                  : <button key={r.id} type="button" draggable title={titleOf(r)} onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/row", r.id); }} onClick={() => open(r.id)}
-                      className={`mt-0.5 block w-full cursor-grab truncate rounded border bg-[var(--n-bg)] px-1 py-0.5 text-left text-xs shadow-sm hover:bg-[var(--n-hover)] ${isDone(r, db.schema) ? "border-[var(--n-border)] text-[var(--n-text-faint)] line-through" : /red/.test(dueTone(col, r, db.ctx)) ? "border-red-500/60" : "border-[var(--n-border)]"}`}>
+                  : <button key={r.id} type="button" {...item(r)}
+                      className={`${chip} mt-0.5 block w-full truncate rounded border bg-[var(--n-bg)] px-1 py-0.5 text-left text-xs shadow-sm hover:bg-[var(--n-hover)] ${drag?.id === r.id ? "opacity-40" : ""} ${isDone(r, db.schema) ? "border-[var(--n-border)] text-[var(--n-text-faint)] line-through" : /red/.test(dueTone(col, r, db.ctx)) ? "border-red-500/60" : "border-[var(--n-border)]"}`}>
                       {r.icon} {titleOf(r)}
                     </button>
               ))}
@@ -525,6 +617,36 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
         })}
       </div>
       </ScrollArea>
+      </div>
+      {/* Só com itens sem data: aparecer no meio do arrasto encolhia o calendário e o item caía no dia errado. */}
+      {undated.length > 0 && (
+        // Como no Notion: o que não tem data fica ao lado, pronto para ser arrastado para um dia.
+        <aside aria-label="Sem data" data-day={NO_DAY}
+          className={`rounded-lg border border-[var(--n-border)] p-1.5 xl:sticky xl:top-2 xl:w-56 xl:shrink-0 ${over === NO_DAY ? "bg-[var(--n-active)]" : ""}`}>
+          <p className="mb-1 px-1 text-xs font-medium text-[var(--n-text-muted)]">Sem data <span className="font-normal text-[var(--n-text-faint)]">{undated.length}</span></p>
+          <p className="mb-1 px-1 text-[11px] text-[var(--n-text-faint)]">Arraste para um dia do calendário.</p>
+          <div className="n-scroll flex max-h-[420px] flex-col gap-1 overflow-y-auto">
+            {undated.slice(0, allUndated ? undefined : UNDATED_SHOWN).map((r) => (
+              <button key={r.id} type="button" {...item(r)}
+                className={`${chip} block w-full truncate rounded border border-[var(--n-border)] bg-[var(--n-bg)] px-1.5 py-1 text-left text-xs shadow-sm hover:bg-[var(--n-hover)] ${drag?.id === r.id ? "opacity-40" : ""}`}>
+                {r.icon} {titleOf(r)}
+              </button>
+            ))}
+            {undated.length > UNDATED_SHOWN && !allUndated && (
+              <button type="button" onClick={() => setAllUndated(true)} className="rounded px-1 py-0.5 text-left text-xs text-[var(--n-accent)] hover:bg-[var(--n-hover)]">
+                Mostrar mais ({undated.length - UNDATED_SHOWN})
+              </button>
+            )}
+          </div>
+        </aside>
+      )}
+      </div>
+      {drag && (
+        <div aria-hidden style={{ left: drag.x + 8, top: drag.y + 8 }}
+          className="pointer-events-none fixed z-50 max-w-48 truncate rounded border border-[var(--n-accent)] bg-[var(--n-bg)] px-1.5 py-0.5 text-xs shadow-lg">
+          {drag.label}
+        </div>
+      )}
     </div>
   );
 }
@@ -535,7 +657,7 @@ export function TimelineView({ db, view, rows, open, defaults }: ViewProps) {
   const col = dateCol(db, view);
   const [origin, setOrigin] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0, 0, 0, 0); return d; });
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null);
-  if (!col) return <NoDate />;
+  if (!col) return <NoDate db={db} view={view} kind="timeline" />;
   const days = Array.from({ length: 60 }, (_, i) => new Date(origin.getFullYear(), origin.getMonth(), origin.getDate() + i));
   const index = (s: string) => Math.round((parseDay(s.slice(0, 10)).getTime() - origin.getTime()) / 86_400_000);
   const today = iso(new Date());

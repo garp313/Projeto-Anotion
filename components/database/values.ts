@@ -3,7 +3,8 @@ import type {
   ColumnSchema, DatabaseRow, DatabaseViewConfig, DateValue, Filter, FilterOp, NumberFormat, PropType, RollupFn,
 } from "./types";
 
-export type RelatedDb = { schema: ColumnSchema[]; rows: DatabaseRow[] };
+/** missing: o banco ligado foi para a lixeira ou apagado; o campo precisa apontar para outro. */
+export type RelatedDb = { schema: ColumnSchema[]; rows: DatabaseRow[]; missing?: boolean };
 export type Ctx = {
   schema: ColumnSchema[];
   related: Record<string, RelatedDb>;

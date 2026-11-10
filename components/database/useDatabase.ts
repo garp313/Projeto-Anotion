@@ -75,7 +75,7 @@ export function useDatabase(databaseId: string) {
     [schema]
   );
   const relatedPages = useQueries({
-    queries: relatedIds.map((id) => ({ queryKey: ["page", id], queryFn: () => fetchPage(id), staleTime: Infinity })),
+    queries: relatedIds.map((id) => ({ queryKey: ["page", id], queryFn: () => fetchPage(id), staleTime: Infinity, retry: 1 })),
   });
   const relatedRows = useQueries({
     queries: relatedIds.map((id) => ({ queryKey: ["database_rows", id], queryFn: () => fetchRows(id) })),
@@ -84,7 +84,8 @@ export function useDatabase(databaseId: string) {
   const related = useMemo(() => {
     const out: Record<string, RelatedDb> = {};
     relatedIds.forEach((id, i) => {
-      out[id] = { schema: schemaOf(relatedPages[i]?.data), rows: relatedRows[i]?.data ?? [] };
+      const p = relatedPages[i];
+      out[id] = { schema: schemaOf(p?.data), rows: relatedRows[i]?.data ?? [], missing: Boolean(p?.isError || (p?.data as { is_archived?: boolean } | undefined)?.is_archived) };
     });
     return out;
   }, [relatedIds, relatedStamp]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -150,9 +151,16 @@ export function useDatabase(databaseId: string) {
   );
 
   const addRow = useMutation({
-    mutationFn: async (init: NewRow = {}) => {
+    mutationFn: async (given: NewRow = {}) => {
       const workspace_id = page.data?.workspace_id;
       if (!workspace_id) throw new Error("Banco de dados não carregado");
+      // Linha nova em branco segue o modelo padrão do banco; duplicar ou escolher outro modelo não.
+      const props = page.data?.row_properties;
+      const tpl = given.title === undefined && given.content_json === undefined
+        ? (props?.__templates as RowTemplate[] | undefined)?.find((t) => t.id === props?.__defaultTemplate) : undefined;
+      const init: NewRow = tpl
+        ? { icon: tpl.icon, content_json: tpl.content_json, ...given, row_properties: { ...tpl.row_properties, ...given.row_properties } }
+        : given;
       const { data, error } = await supabase
         .from("pages")
         .insert({
@@ -259,6 +267,15 @@ export function useDatabase(databaseId: string) {
     },
   });
 
+  /** Cartão criado e abandonado sem nome: some de vez, sem passar pela lixeira. */
+  const discardRow = async (rowId: string) => {
+    setRows((rows) => rows.filter((r) => r.id !== rowId));
+    // Arquiva antes: apagar de vez só vale para o que está na lixeira (0015). Sem a 0015, fica só arquivado.
+    await supabase.from("pages").update({ is_archived: true }).eq("id", rowId);
+    await supabase.from("pages").delete().eq("id", rowId);
+    qc.invalidateQueries({ queryKey: ["pages"] });
+  };
+
   const moveRow = useMutation({
     mutationFn: async ({ rowId, position }: { rowId: string; position: number }) => {
       const { error } = await supabase.from("pages").update({ position }).eq("id", rowId);
@@ -340,6 +357,8 @@ export function useDatabase(databaseId: string) {
 
   const templates: RowTemplate[] = page.data?.row_properties?.__templates ?? [];
   const setTemplates = (next: RowTemplate[]) => patchProp("__templates", next);
+  const defaultTemplateId: string | null = page.data?.row_properties?.__defaultTemplate ?? null;
+  const setDefaultTemplate = (id: string | null) => patchProp("__defaultTemplate", id);
   /** Guarda propriedades e conteúdo da linha para criar outras iguais pelo botão Novo. */
   const saveTemplate = async (row: DatabaseRow) => {
     const { data } = await supabase.from("pages").select("content_json").eq("id", row.id).single();
@@ -359,10 +378,11 @@ export function useDatabase(databaseId: string) {
     isLoading: rowsQuery.isLoading || page.isLoading,
     error: rowsQuery.error ?? page.error,
     saveSchema, saveColumn, addColumn, removeColumn, linkRelation, linkRollup, unlinkMirror, addSelfRelation, createRelated, setViews, saveView,
-    templates, setTemplates, saveTemplate, setCalendarSync,
+    templates, setTemplates, saveTemplate, setCalendarSync, defaultTemplateId, setDefaultTemplate,
     addRow: (init?: NewRow) => addRow.mutateAsync(init ?? {}),
     setValue: (rowId: string, colId: string, value: any) => setValue.mutate({ rowId, colId, value }),
     removeRow: (rowId: string) => removeRows.mutate([rowId]),
+    discardRow,
     removeRows: (ids: string[]) => removeRows.mutate(ids),
     moveRow: (rowId: string, position: number) => moveRow.mutate({ rowId, position }),
     duplicateRow,

@@ -111,27 +111,60 @@ export function MyTasks() {
     return (data?.tasks ?? []).filter((t) => isAssignedTo(t.people, who));
   }, [data, me, members]);
   const [project, setProject] = useState("");
+  const [status, setStatus] = useState("");
+  const [priority, setPriority] = useState("");
+  const [hideDone, setHideDone] = useState(false);
+  // Preferência de cada pessoa neste navegador; sem armazenamento disponível, só não lembra.
+  useEffect(() => { try { setHideDone(localStorage.getItem("mytasks-hide-done") === "1"); } catch {} }, []);
+  const toggleDone = (on: boolean) => { setHideDone(on); try { localStorage.setItem("mytasks-hide-done", on ? "1" : "0"); } catch {} };
+  const names = (pick: (t: Task) => string | undefined) => [...new Set(assigned.map(pick).filter((x): x is string => Boolean(x)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   const projectNames = useMemo(() => [...new Set(assigned.flatMap((t) => t.projects))].sort(), [assigned]);
+  const statusNames = useMemo(() => names((t) => t.statusOption?.value), [assigned]); // eslint-disable-line react-hooks/exhaustive-deps
+  const priorityNames = useMemo(() => names((t) => t.priority?.value), [assigned]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Bancos diferentes têm opções diferentes: o filtro compara pelo nome da opção.
+  const matches = (t: Task) => (!project || t.projects.includes(project))
+    && (!status || (status === "__none" ? !t.statusOption : t.statusOption?.value === status))
+    && (!priority || (priority === "__none" ? !t.priority : t.priority?.value === priority));
   const buckets = useMemo(() => {
     // Toda demanda atribuída entra por prazo, venha do banco que vier.
-    return bucketize(assigned.filter((t) => !t.done && (!project || t.projects.includes(project))));
-  }, [assigned, project]);
-  const finished = useMemo(() => assigned.filter((t) => t.done), [assigned]);
+    return bucketize(assigned.filter((t) => !t.done && matches(t)));
+  }, [assigned, project, status, priority]); // eslint-disable-line react-hooks/exhaustive-deps
+  const finished = useMemo(() => (hideDone ? [] : assigned.filter((t) => t.done && matches(t))), [assigned, project, status, priority, hideDone]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filtering = Boolean(project || status || priority);
+  const doneCount = assigned.filter((t) => t.done).length;
 
   return (
     <div className="mx-auto w-full max-w-[760px] p-6 pt-12 sm:px-10">
       <h1 className="mb-1 text-3xl font-bold">Minhas tarefas</h1>
       <p className="mb-4 text-sm text-[var(--n-text-muted)]">Tudo que está atribuído a você.</p>
-      {projectNames.length > 0 && (
-        <div className="mb-6 w-fit">
-          <Choice label="Filtrar por projeto" width={240} value={project} onChange={setProject}
-            options={[{ value: "", label: "Todos os projetos" }, ...projectNames.map((p) => ({ value: p, label: p }))]} />
+      {assigned.length > 0 && (
+        <div role="group" aria-label="Filtros de Minhas tarefas" className="mb-6 flex flex-wrap items-center gap-2">
+          {projectNames.length > 0 && (
+            <Choice label="Filtrar por projeto" width={240} value={project} onChange={setProject}
+              options={[{ value: "", label: "Todos os projetos" }, ...projectNames.map((p) => ({ value: p, label: p }))]} />
+          )}
+          {statusNames.length > 0 && (
+            <Choice label="Filtrar por status" width={200} value={status} onChange={setStatus}
+              options={[{ value: "", label: "Todos os status" }, ...statusNames.map((p) => ({ value: p, label: p })), { value: "__none", label: "Sem status" }]} />
+          )}
+          {priorityNames.length > 0 && (
+            <Choice label="Filtrar por prioridade" width={200} value={priority} onChange={setPriority}
+              options={[{ value: "", label: "Todas as prioridades" }, ...priorityNames.map((p) => ({ value: p, label: p })), { value: "__none", label: "Sem prioridade" }]} />
+          )}
+          <label className="flex items-center gap-1.5 text-sm text-[var(--n-text-muted)]">
+            <input type="checkbox" checked={hideDone} onChange={(e) => toggleDone(e.target.checked)} className="accent-[var(--n-accent)]" />
+            Ocultar concluídas{hideDone && doneCount ? ` (${doneCount})` : ""}
+          </label>
+          {filtering && (
+            <button type="button" onClick={() => { setProject(""); setStatus(""); setPriority(""); }}
+              className="rounded px-2 py-0.5 text-xs text-[var(--n-text-muted)] hover:bg-[var(--n-hover)]">Limpar filtros</button>
+          )}
         </div>
       )}
 
       {error ? <p role="alert" className="text-sm text-red-500">Não foi possível carregar as tarefas.</p>
         : isLoading || !me ? <div className="h-40 animate-pulse rounded bg-[var(--n-hover)]/40" />
-        : !buckets.length && !finished.length ? (
+        : !buckets.length && !finished.length && !filtering && !hideDone ? (
           <div className="rounded-lg border border-dashed border-[var(--n-border)] p-8 text-center">
             <ListChecks size={28} className="mx-auto mb-2 text-[var(--n-text-faint)]" />
             <p className="mb-3 text-sm text-[var(--n-text-muted)]">
@@ -146,7 +179,7 @@ export function MyTasks() {
             )}
             {template.isError && <p role="alert" className="mt-2 text-xs text-red-500">Não foi possível criar o modelo.</p>}
           </div>
-        ) : <>{!buckets.length && <p className="mb-6 text-sm text-[var(--n-text-muted)]">Nada pendente com você.</p>}{buckets.map((b) => (
+        ) : <>{!buckets.length && <p className="mb-6 text-sm text-[var(--n-text-muted)]">{filtering ? "Nenhuma tarefa pendente com estes filtros." : "Nada pendente com você."}</p>}{buckets.map((b) => (
           <section key={b.id} aria-label={b.label} className="mb-6">
             <h2 className={`mb-1 text-sm font-semibold ${b.tone ?? ""}`}>
               {b.label} <span className="font-normal text-[var(--n-text-faint)]">{b.tasks.length}</span>

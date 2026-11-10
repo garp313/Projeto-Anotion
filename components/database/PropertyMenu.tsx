@@ -131,6 +131,9 @@ function ConfigFor({ col, db, save }: { col: ColumnSchema; db: Db; save: (c: Col
       return (
         <div className="p-1">
           <label className="block"><span className={label}>Relacionar com</span>
+            {col.relationDatabaseId && db.ctx.related[col.relationDatabaseId]?.missing && (
+              <span role="alert" className="mb-1 block text-xs text-orange-600">Banco relacionado excluído — escolha outro.</span>
+            )}
             <Choice label="Relacionar com" width={240} value={col.relationDatabaseId ?? ""}
               options={dbs.map((p) => ({ value: p.id, label: p.title || "Sem título" }))}
               onChange={(id) => void db.linkRelation(col, id)} />

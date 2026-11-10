@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowUpDown, Calendar, ChevronDown, Columns3, Copy, Download, Eye, EyeOff, Filter as FilterIcon, GalleryHorizontalEnd, GanttChart, Kanban, Layers,
-  List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Table, Trash2, Upload, X,
+  List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Star, Table, Trash2, Upload, X,
 } from "lucide-react";
 import type { DatabaseRow, DatabaseViewConfig, Filter, FilterOp, PropType, ViewType } from "./types";
 import { VIEW_LABEL, defaultView, newId } from "./types";
@@ -288,11 +288,18 @@ function NewMenu({ db, defaults, onCreated }: { db: Db; defaults: Record<string,
             }}>
             <span className="truncate">{t.icon} {t.name}</span>
           </button>
-          <button type="button" aria-label={`Excluir modelo ${t.name}`} onClick={() => void db.setTemplates(db.templates.filter((x) => x.id !== t.id))}
+          <button type="button" aria-label={db.defaultTemplateId === t.id ? `Deixar de usar ${t.name} como padrão` : `Usar ${t.name} como padrão`}
+            title={db.defaultTemplateId === t.id ? "Padrão de toda Nova página. Clique para tirar." : "Usar como padrão em toda Nova página"}
+            onClick={() => void db.setDefaultTemplate(db.defaultTemplateId === t.id ? null : t.id)}
+            className={`rounded p-1 hover:bg-[var(--n-hover)] ${db.defaultTemplateId === t.id ? "text-yellow-500" : "text-[var(--n-text-faint)]"}`}>
+            <Star size={13} className={db.defaultTemplateId === t.id ? "fill-yellow-400" : ""} />
+          </button>
+          <button type="button" aria-label={`Excluir modelo ${t.name}`} onClick={() => { if (db.defaultTemplateId === t.id) void db.setDefaultTemplate(null); void db.setTemplates(db.templates.filter((x) => x.id !== t.id)); }}
             className="rounded p-1 hover:bg-[var(--n-hover)]"><X size={13} /></button>
         </div>
       ))}
       {!db.templates.length && <p className="px-2 py-1 text-xs text-[var(--n-text-muted)]">Nenhum modelo ainda. No menu “…” de uma linha, use “Salvar como modelo”.</p>}
+      {db.templates.length > 0 && <p className="px-2 pb-1 pt-1 text-[11px] text-[var(--n-text-faint)]">A estrela define o modelo usado em toda Nova página.</p>}
     </Pop>
   );
 }

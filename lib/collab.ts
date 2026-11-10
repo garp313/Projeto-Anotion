@@ -6,6 +6,8 @@ export type Member = { id: string; name: string; email: string };
 export type Notification = {
   id: string; kind: "assigned" | "mention" | "comment" | "status"; page_id: string | null;
   body: string; read_at: string | null; created_at: string;
+  /** Migration 0015. Sem ela, a Inbox funciona sem a opção de arquivar. */
+  archived_at?: string | null;
 };
 
 /** Sem a migration 0003 as tabelas não existem: as telas avisam em vez de quebrar. */
