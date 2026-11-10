@@ -135,6 +135,18 @@ function ConfigFor({ col, db, save }: { col: ColumnSchema; db: Db; save: (c: Col
               options={dbs.map((p) => ({ value: p.id, label: p.title || "Sem título" }))}
               onChange={(id) => void db.linkRelation(col, id)} />
           </label>
+          {col.relationDatabaseId && (
+            <label className="mt-1 block"><span className={label}>Mostrar coluna</span>
+              <Choice label="Mostrar coluna" width={240} value={col.relationShowProp ?? ""}
+                options={[
+                  { value: "", label: "Nome da linha" },
+                  ...(db.ctx.related[col.relationDatabaseId]?.schema ?? [])
+                    .filter((c) => c.type !== "title" && c.id !== col.relationSyncProp)
+                    .map((c) => ({ value: c.id, label: c.name })),
+                ]}
+                onChange={(id) => save({ ...col, relationShowProp: id || undefined })} />
+            </label>
+          )}
           {col.relationDatabaseId && <TwoWayToggle col={col} db={db} />}
         </div>
       );
@@ -143,27 +155,31 @@ function ConfigFor({ col, db, save }: { col: ColumnSchema; db: Db; save: (c: Col
       const relations = db.schema.filter((c) => c.type === "relation");
       const cfg = col.rollup ?? { relationProp: "", targetProp: "", fn: "show_original" as RollupFn };
       const rel = relations.find((r) => r.id === cfg.relationProp);
-      const targets = rel?.relationDatabaseId ? db.ctx.related[rel.relationDatabaseId]?.schema ?? [] : [];
+      const targets = (rel?.relationDatabaseId ? db.ctx.related[rel.relationDatabaseId]?.schema ?? [] : [])
+        .filter((t) => t.id !== rel?.relationSyncProp);
+      // Sem relação ainda, dá para criar uma aqui mesmo: antes era preciso saber a ordem certa.
+      const others = (pages.data ?? []).filter((p) => p.is_database && p.id !== db.id);
+      const relationOptions = [
+        ...relations.map((r) => ({ value: r.id, label: r.name })),
+        ...others.map((p) => ({ value: `new:${p.id}`, label: `Nova relação com “${p.title || "Sem título"}”` })),
+      ];
+      const pick = (value: string) => {
+        if (!value.startsWith("new:")) return save({ ...col, rollup: { ...cfg, relationProp: value, targetProp: "" } });
+        const target = others.find((p) => p.id === value.slice(4));
+        if (target) void db.linkRollup(col, target.id, target.title);
+      };
       return (
         <div className="space-y-1 p-1">
-          <label className="block"><span className={label}>Relação</span>
-            <select className={select} value={cfg.relationProp} onChange={(e) => save({ ...col, rollup: { ...cfg, relationProp: e.target.value, targetProp: "" } })}>
-              <option value="">Escolha…</option>
-              {relations.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          </label>
-          <label className="block"><span className={label}>Propriedade</span>
-            <select className={select} value={cfg.targetProp} onChange={(e) => save({ ...col, rollup: { ...cfg, targetProp: e.target.value } })}>
-              <option value="">Escolha…</option>
-              {targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </label>
-          <label className="block"><span className={label}>Calcular</span>
-            <select className={select} value={cfg.fn} onChange={(e) => save({ ...col, rollup: { ...cfg, fn: e.target.value as RollupFn } })}>
-              {ROLLUP_FNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </label>
-          {!relations.length && <p className="text-xs text-[var(--n-text-faint)]">Crie antes uma propriedade de Relação.</p>}
+          <div><span className={label}>Relação</span>
+            <Choice label="Relação da rollup" width={280} value={cfg.relationProp} options={relationOptions} onChange={pick} /></div>
+          <div><span className={label}>Propriedade</span>
+            <Choice label="Propriedade da rollup" width={240} value={cfg.targetProp} options={targets.map((t) => ({ value: t.id, label: t.name }))}
+              onChange={(targetProp) => save({ ...col, rollup: { ...cfg, targetProp } })} /></div>
+          <div><span className={label}>Calcular</span>
+            <Choice label="Cálculo da rollup" width={240} value={cfg.fn} options={ROLLUP_FNS.map(([value, l]) => ({ value, label: l }))}
+              onChange={(fn) => save({ ...col, rollup: { ...cfg, fn } })} /></div>
+          {!rel && <p className="text-xs text-[var(--n-text-faint)]">Escolha uma relação deste banco ou crie uma nova com outro banco.</p>}
+          {rel && !targets.length && <p className="text-xs text-[var(--n-text-faint)]">Carregando as propriedades do outro banco…</p>}
         </div>
       );
     }

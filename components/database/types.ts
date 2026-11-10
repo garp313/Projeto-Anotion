@@ -22,6 +22,8 @@ export type ColumnSchema = {
   relationDatabaseId?: string;
   /** Propriedade espelho no banco de destino (relação de duas vias). */
   relationSyncProp?: string;
+  /** Coluna do banco ligado mostrada no lugar do nome da linha. Vazio mostra o nome. */
+  relationShowProp?: string;
   rollup?: { relationProp: string; targetProp: string; fn: RollupFn };
   idPrefix?: string;
 };

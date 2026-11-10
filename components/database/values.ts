@@ -145,6 +145,17 @@ export function rawValue(col: ColumnSchema, row: DatabaseRow, ctx: Ctx): any {
 }
 
 /** Texto usado para exibir, buscar, filtrar e agrupar. */
+/** Texto de uma linha ligada: a coluna escolhida na relação ou, sem ela ou vazia, o nome da linha. */
+export function relatedLabel(col: ColumnSchema, row: DatabaseRow, ctx: Ctx): string {
+  const name = row.title || "Sem título";
+  const db = col.relationDatabaseId ? ctx.related[col.relationDatabaseId] : undefined;
+  const show = col.relationShowProp ? db?.schema.find((c) => c.id === col.relationShowProp) : undefined;
+  if (!db || !show || show.type === "title") return name;
+  const there = { ...ctx, schema: db.schema };
+  const text = displayText(show, rawValue(show, row, there), there).trim();
+  return text || name;
+}
+
 export function displayText(col: ColumnSchema, v: any, ctx: Ctx): string {
   if (v && typeof v === "object" && "__error" in v) return "Erro";
   if (isBlank(v) && col.type !== "number") return "";
@@ -162,7 +173,7 @@ export function displayText(col: ColumnSchema, v: any, ctx: Ctx): string {
     case "unique_id": return `${col.idPrefix ? `${col.idPrefix}-` : ""}${v}`;
     case "relation": {
       const db = col.relationDatabaseId ? ctx.related[col.relationDatabaseId] : undefined;
-      return (v as string[]).map((id) => db?.rows.find((r) => r.id === id)?.title || "Sem título").join(", ");
+      return (v as string[]).map((id) => { const r = db?.rows.find((x) => x.id === id); return r ? relatedLabel(col, r, ctx) : "Sem título"; }).join(", ");
     }
     default:
       if (v instanceof Date) return v.toLocaleDateString("pt-BR");

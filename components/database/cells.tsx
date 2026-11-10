@@ -7,7 +7,7 @@ import { Check, ExternalLink, FileUp, Link2, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { ChecklistItem, ColumnSchema, DatabaseRow, FileValue, PersonValue, SelectOption, StatusGroup } from "./types";
 import { COLORS, READ_ONLY, newId } from "./types";
-import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue } from "./values";
+import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue, relatedLabel } from "./values";
 import type { Db } from "./useDatabase";
 import { OptionTag, Pop, fieldClass, menuItem } from "./ui";
 
@@ -292,8 +292,10 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   const [picked, setPicked] = useState<{ id: string; title: string } | null>(null);
   const qc = useQueryClient();
   if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
-  const label = (r: DatabaseRow) => r.title || "Sem título";
-  const shown = target.rows.filter((r) => label(r).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 50);
+  const label = (r: DatabaseRow) => relatedLabel(col, r, db.ctx);
+  const needle = q.trim().toLowerCase();
+  // Busca pelo nome e pela coluna mostrada: quem escolheu "Atribuir" procura pela pessoa.
+  const shown = target.rows.filter((r) => `${r.title} ${label(r)}`.toLowerCase().includes(needle)).slice(0, 50);
   const chosen = target.rows.filter((r) => ids.includes(r.id));
   const typed = q.trim();
   const createNew = async () => {
@@ -323,8 +325,9 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
       {shown.map((r) => (
         <button key={r.id} type="button" className={menuItem}
           onClick={() => db.setValue(row.id, col.id, ids.includes(r.id) ? ids.filter((x) => x !== r.id) : [...ids, r.id])}>
-          <span className="truncate">{r.icon} {label(r)}</span>
-          {ids.includes(r.id) && <Check size={14} className="ml-auto" />}
+          <span className="min-w-0 truncate">{r.icon} {label(r)}</span>
+          {label(r) !== (r.title || "Sem título") && <span className="min-w-0 shrink truncate text-xs text-[var(--n-text-faint)]">{r.title}</span>}
+          {ids.includes(r.id) && <Check size={14} className="ml-auto shrink-0" />}
         </button>
       ))}
       {!shown.length && !typed && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Nenhuma página encontrada neste banco.</p>}

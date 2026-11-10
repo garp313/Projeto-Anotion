@@ -296,6 +296,14 @@ export function useDatabase(databaseId: string) {
     qc.invalidateQueries({ queryKey: ["database_rows", targetId] });
     return saved;
   };
+  /** Rollup sem relação: cria a relação e liga a rollup a ela numa gravação só. */
+  const linkRollup = async (col: ColumnSchema, targetId: string, targetTitle: string) => {
+    const rel: ColumnSchema = { id: newId("p_"), name: targetTitle || "Relação", type: "relation", relationDatabaseId: targetId };
+    rel.relationSyncProp = await addMirror(qc, targetId, page.data?.title || "Relação", databaseId, rel.id);
+    const rollup: ColumnSchema = { ...col, rollup: { relationProp: rel.id, targetProp: "", fn: col.rollup?.fn ?? "show_original" } };
+    await saveSchema(schema.flatMap((c) => (c.id === col.id ? [rel, rollup] : [c])));
+    qc.invalidateQueries({ queryKey: ["database_rows", targetId] });
+  };
   const unlinkMirror = async (col: ColumnSchema) => {
     if (col.relationDatabaseId && col.relationSyncProp) await removeMirror(qc, col.relationDatabaseId, col.relationSyncProp);
     return saveColumn({ ...col, relationSyncProp: undefined });
@@ -350,7 +358,7 @@ export function useDatabase(databaseId: string) {
     rows: rowsQuery.data ?? [],
     isLoading: rowsQuery.isLoading || page.isLoading,
     error: rowsQuery.error ?? page.error,
-    saveSchema, saveColumn, addColumn, removeColumn, linkRelation, unlinkMirror, addSelfRelation, createRelated, setViews, saveView,
+    saveSchema, saveColumn, addColumn, removeColumn, linkRelation, linkRollup, unlinkMirror, addSelfRelation, createRelated, setViews, saveView,
     templates, setTemplates, saveTemplate, setCalendarSync,
     addRow: (init?: NewRow) => addRow.mutateAsync(init ?? {}),
     setValue: (rowId: string, colId: string, value: any) => setValue.mutate({ rowId, colId, value }),
