@@ -78,3 +78,29 @@ export const PropIcon = ({ type, size = 14 }: { type: PropType; size?: number })
   const I = ICONS[type] ?? Mail;
   return <I size={size} className="shrink-0 text-[var(--n-text-faint)]" />;
 };
+
+const UUID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/([A-Za-z0-9_-]+))?/i;
+
+/** ID de banco é o id da página; o de coluna leva o banco junto ("banco/coluna"), para valer sozinho em qualquer lugar. */
+export const columnRef = (databaseId: string, columnId: string) => `${databaseId}/${columnId}`;
+
+/** Lê um ID colado: aceita o ID puro, "banco/coluna" ou até o link da página. */
+export function parseRef(text: string): { id: string; column?: string } | null {
+  const m = UUID.exec(text.trim());
+  return m ? { id: m[1].toLowerCase(), column: m[2] } : null;
+}
+
+/** Item de menu que copia um ID e confirma ali mesmo. */
+export function CopyIdItem({ value, label }: { value: string; label: string }) {
+  const [done, setDone] = useState<"ok" | "fail" | null>(null);
+  return (
+    <button type="button" className={menuItem} title={value}
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(value); setDone("ok"); } catch { setDone("fail"); }
+        setTimeout(() => setDone(null), 1800);
+      }}>
+      <Fingerprint size={14} />
+      <span className="min-w-0 flex-1 truncate">{done === "ok" ? "ID copiado!" : done === "fail" ? value : label}</span>
+    </button>
+  );
+}

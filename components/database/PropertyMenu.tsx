@@ -6,7 +6,7 @@ import type { ColumnSchema, DatabaseViewConfig, NumberFormat, PropType, RollupFn
 import { COLORS, DEFAULT_STATUS_OPTIONS, PROP_LABEL, newId } from "./types";
 import { evalFormula } from "./formula";
 import type { Db } from "./useDatabase";
-import { Choice, PropIcon, fieldClass, menuItem } from "./ui";
+import { Choice, CopyIdItem, PropIcon, columnRef, fieldClass, menuItem } from "./ui";
 
 export const ADDABLE_TYPES = (Object.keys(PROP_LABEL) as PropType[]).filter((t) => t !== "title");
 
@@ -223,6 +223,7 @@ export function PropertyMenu({ col, db, view, onClose }: { col: ColumnSchema; db
       <div className="my-1 border-t border-[var(--n-border)]" />
       <button type="button" className={menuItem} onClick={() => sortBy("asc")}><ArrowUp size={14} /> Ordenar crescente</button>
       <button type="button" className={menuItem} onClick={() => sortBy("desc")}><ArrowDown size={14} /> Ordenar decrescente</button>
+      <CopyIdItem value={columnRef(db.id, col.id)} label="Copiar ID da coluna" />
       {!isTitle && (
         <>
           <button type="button" className={menuItem} onClick={() => { void db.saveView({ ...view, hidden: [...view.hidden, col.id] }); onClose(); }}>

@@ -16,7 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { useDatabase, type Db } from "./useDatabase";
 import { BoardView, CalendarView, GalleryView, ListView, TableView, TimelineView } from "./views";
-import { Choice, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
+import { Choice, CopyIdItem, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
 import { DateText } from "./DatePicker";
 
 const ImportWizard = dynamic(() => import("@/components/import/ImportWizard").then((m) => m.ImportWizard), { ssr: false });
@@ -255,6 +255,7 @@ function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: 
       </button>
       <button type="button" className={menuItem} onClick={() => void exportDb()}><Download size={14} /> Exportar banco (.zip)</button>
       <button type="button" className={menuItem} onClick={() => { setOpen(false); setImporting(true); }}><Upload size={14} /> Importar do Notion (.zip/.csv)</button>
+      <CopyIdItem value={db.id} label="Copiar ID do banco" />
       {db.schema.some((c) => c.type === "date") && <p className="px-2 pb-0.5 pt-2 text-[11px] text-[var(--n-text-faint)]">Sincronizar com o Google Agenda</p>}
       {db.schema.filter((c) => c.type === "date").map((c) => {
         const on = db.page?.row_properties?.__calendarSync === c.id;

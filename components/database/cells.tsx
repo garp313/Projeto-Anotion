@@ -9,7 +9,7 @@ import type { ChecklistItem, ColumnSchema, DatabaseRow, FileValue, PersonValue, 
 import { COLORS, READ_ONLY, newId } from "./types";
 import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue, relatedLabel } from "./values";
 import type { Db } from "./useDatabase";
-import { OptionTag, Pop, fieldClass, menuItem } from "./ui";
+import { OptionTag, Pop, fieldClass, menuItem, parseRef } from "./ui";
 
 type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean; dense?: boolean };
 
@@ -314,6 +314,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   const [busy, setBusy] = useState(false);
   const [changing, setChanging] = useState(false);
   const [picked, setPicked] = useState<{ id: string; title: string } | null>(null);
+  const [refNote, setRefNote] = useState<string | null>(null);
   const qc = useQueryClient();
   if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
   if (target.missing) return <MissingRelation col={col} db={db} compact={compact || dense} />;
@@ -328,10 +329,36 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
       : null;
   };
   const needle = q.trim().toLowerCase();
-  // Busca pelo nome e pela coluna mostrada: quem escolheu "Atribuir" procura pela pessoa.
-  const shown = target.rows.filter((r) => `${r.title} ${label(r)}`.toLowerCase().includes(needle)).slice(0, 50);
-  const chosen = target.rows.filter((r) => ids.includes(r.id));
   const typed = q.trim();
+  // ID colado ("Copiar ID do banco", "Copiar ID da coluna" ou o link de uma página): aponta o campo para lá
+  // em vez de criar uma página com o ID como nome.
+  const ref = parseRef(typed);
+  const refDb = ref ? (qc.getQueryData<TreePage[]>(["pages"]) ?? []).find((p) => p.id === ref.id && p.is_database) : undefined;
+  const refRow = ref && !refDb ? target.rows.find((r) => r.id === ref.id) : undefined;
+  const sameDb = refDb?.id === col.relationDatabaseId;
+  const refCol = sameDb && ref?.column ? target.schema.find((c) => c.id === ref.column) : undefined;
+  const nothingToDo = sameDb && !ref?.column;
+  // Busca pelo nome e pela coluna mostrada: quem escolheu "Atribuir" procura pela pessoa.
+  const shown = refRow ? [refRow] : ref ? [] : target.rows.filter((r) => `${r.title} ${label(r)}`.toLowerCase().includes(needle)).slice(0, 50);
+  const chosen = target.rows.filter((r) => ids.includes(r.id));
+  const applyRef = async () => {
+    if (!ref || !refDb || nothingToDo) return;
+    setBusy(true); setRefNote(null);
+    try {
+      let show = sameDb ? col.relationShowProp : undefined;
+      if (ref.column) {
+        // O banco colado pode não estar carregado aqui: confere se a coluna existe antes de gravar.
+        const { data } = await createClient().from("pages").select("database_schema").eq("id", refDb.id).single();
+        const found = ((data?.database_schema ?? []) as ColumnSchema[]).find((c) => c.id === ref.column);
+        if (!found) { setRefNote("Essa coluna não existe mais nesse banco."); return; }
+        show = found.type === "title" ? undefined : found.id;
+      }
+      const next = { ...col, relationShowProp: show };
+      await (sameDb ? db.saveColumn(next) : db.linkRelation(next, refDb.id));
+      setQ("");
+    } catch { setRefNote("Não foi possível usar esse ID. Tente de novo."); }
+    finally { setBusy(false); }
+  };
   const createNew = async () => {
     setBusy(true);
     try {
@@ -366,8 +393,28 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
             {chosen.length > MAX_CHIPS && <span className="text-sm text-[var(--n-text-muted)]">+{chosen.length - MAX_CHIPS}</span>}
           </span>
         : <Empty compact={compact} dense={dense} />}>
-      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ou criar…" className={`${fieldClass} mb-1`}
-        onKeyDown={(e) => { if (e.key === "Enter" && typed && !shown.length) { e.preventDefault(); void createNew(); } }} />
+      <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setRefNote(null); }} placeholder="Buscar, criar ou colar um ID…" className={`${fieldClass} mb-1`}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" || !typed) return;
+          if (refDb) { e.preventDefault(); void applyRef(); }
+          else if (refRow) { e.preventDefault(); db.setValue(row.id, col.id, ids.includes(refRow.id) ? ids.filter((x) => x !== refRow.id) : [...ids, refRow.id]); }
+          else if (!ref && !shown.length) { e.preventDefault(); void createNew(); }
+        }} />
+      {ref && !refRow && (
+        <div className="px-2 py-1 text-xs">
+          {!refDb ? <p className="text-[var(--n-text-faint)]">Nenhum banco ou página deste banco com esse ID.</p>
+            : nothingToDo ? <p className="text-[var(--n-text-muted)]">Este campo já busca em “{refDb.title || "Sem título"}”.</p>
+            : <>
+                <p className="mb-1">
+                  {sameDb ? <>Mostrar a coluna “{refCol?.name ?? "colada"}” de “{refDb.title || "Sem título"}”?</>
+                    : <>Buscar em “{refDb.icon} {refDb.title || "Sem título"}”{ref.column ? <>, mostrando a coluna colada</> : null}? Vínculos deste campo com o banco atual deixam de valer.</>}
+                </p>
+                <button type="button" disabled={busy} onClick={() => void applyRef()}
+                  className="rounded bg-[var(--n-accent)] px-2 py-0.5 font-medium text-white disabled:opacity-60">Usar este ID</button>
+              </>}
+          {refNote && <p role="alert" className="mt-1 text-orange-600">{refNote}</p>}
+        </div>
+      )}
       {shown.map((r) => (
         <button key={r.id} type="button" className={menuItem}
           onClick={() => db.setValue(row.id, col.id, ids.includes(r.id) ? ids.filter((x) => x !== r.id) : [...ids, r.id])}>
@@ -377,9 +424,11 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
         </button>
       ))}
       {!shown.length && !typed && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Nenhuma página encontrada neste banco.</p>}
-      <button type="button" disabled={busy || !typed} onClick={createNew} className={`${menuItem} disabled:opacity-60`}>
-        <Plus size={14} /> {typed ? <span className="truncate">Criar “{typed}”</span> : <span>Digite um nome para criar novo</span>}
-      </button>
+      {!ref && (
+        <button type="button" disabled={busy || !typed} onClick={createNew} className={`${menuItem} disabled:opacity-60`}>
+          <Plus size={14} /> {typed ? <span className="truncate">Criar “{typed}”</span> : <span>Digite um nome para criar novo</span>}
+        </button>
+      )}
       <div className="mt-1 border-t border-[var(--n-border)] pt-1 text-xs text-[var(--n-text-muted)]">
         {!changing ? (
           <p className="flex items-center gap-1 px-2 py-0.5">
