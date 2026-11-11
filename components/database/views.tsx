@@ -7,7 +7,7 @@ import { aggregate, asDate, displayText, dueTone, groupRows, isBlank, isDone, pa
 import type { Db } from "./useDatabase";
 import { PropertyPreview, PropertyValue } from "./cells";
 import { AddPropertyMenu, PropertyMenu } from "./PropertyMenu";
-import { Choice, OptionTag, Pop, PropIcon, menuItem } from "./ui";
+import { Choice, CopyIdItem, OptionTag, Pop, PropIcon, menuItem } from "./ui";
 
 export type ViewProps = {
   db: Db;
@@ -89,6 +89,7 @@ function RowMenu({ row, db, open }: { row: DatabaseRow; db: Db; open: (id: strin
       <button type="button" className={menuItem} onClick={() => { setShow(false); open(row.id); }}><Maximize2 size={14} /> Abrir</button>
       <button type="button" className={menuItem} onClick={() => { setShow(false); db.duplicateRow(row); }}><Copy size={14} /> Duplicar</button>
       <button type="button" className={menuItem} onClick={() => { setShow(false); void db.saveTemplate(row); }}><BookmarkPlus size={14} /> Salvar como modelo</button>
+      <CopyIdItem value={row.id} label="Copiar ID da linha" />
       <button type="button" className={`${menuItem} text-red-500`} onClick={() => { setShow(false); db.removeRow(row.id); }}><Trash2 size={14} /> Excluir</button>
     </Pop>
   );

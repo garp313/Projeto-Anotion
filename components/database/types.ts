@@ -24,6 +24,8 @@ export type ColumnSchema = {
   relationSyncProp?: string;
   /** Coluna do banco ligado mostrada no lugar do nome da linha. Vazio mostra o nome. */
   relationShowProp?: string;
+  /** Na página da linha, mostra as propriedades do item ligado. Sem valor: liga quando o destino é outro banco. */
+  relationDetails?: boolean;
   rollup?: { relationProp: string; targetProp: string; fn: RollupFn };
   idPrefix?: string;
 };

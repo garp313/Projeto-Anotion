@@ -151,6 +151,12 @@ function ConfigFor({ col, db, save }: { col: ColumnSchema; db: Db; save: (c: Col
             </label>
           )}
           {col.relationDatabaseId && <TwoWayToggle col={col} db={db} />}
+          {col.relationDatabaseId && (
+            <label className={menuItem}>
+              <input type="checkbox" checked={col.relationDetails ?? col.relationDatabaseId !== db.id} className="accent-[var(--n-accent)]"
+                onChange={(e) => save({ ...col, relationDetails: e.target.checked })} /> Mostrar tudo do item ligado na página
+            </label>
+          )}
         </div>
       );
     }

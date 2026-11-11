@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { CalendarPlus, Check, Clock, Plus } from "lucide-react";
 import { useDatabase } from "./useDatabase";
-import { PropertyValue } from "./cells";
+import { LinkedDetails, PropertyValue } from "./cells";
 import { AddPropertyMenu } from "./PropertyMenu";
 import { Choice, Pop, PropIcon, toolbarBtn } from "./ui";
 import { DateText, TimeText, isoDay } from "./DatePicker";
@@ -129,7 +129,10 @@ export function RowProperties({ databaseId, rowId }: { databaseId: string; rowId
           <span className="flex h-[30px] w-28 shrink-0 items-center gap-1.5 px-1 text-sm text-[var(--n-text-muted)] sm:w-40">
             <PropIcon type={c.type} /> <span className="truncate">{c.name}</span>
           </span>
-          <div className="min-w-0 flex-1"><PropertyValue col={c} row={row} db={db} /></div>
+          <div className="min-w-0 flex-1">
+            <PropertyValue col={c} row={row} db={db} />
+            {c.type === "relation" && <LinkedDetails col={c} row={row} db={db} />}
+          </div>
           {c.type === "date" && db.page?.row_properties?.__calendarSync !== c.id && <AddToCalendar col={c} row={row} db={db} />}
           {c.type === "date" && <FocusBlock row={row} db={db} />}
         </div>

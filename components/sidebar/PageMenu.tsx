@@ -5,7 +5,7 @@ import { usePageTree } from "@/lib/hooks/usePageTree";
 import { createClient } from "@/lib/supabase/client";
 import type { ColumnSchema } from "@/components/database/types";
 import { useFavorites } from "@/lib/hooks/useFavorites";
-import { fieldClass, menuItem } from "@/components/database/ui";
+import { CopyIdItem, fieldClass, menuItem } from "@/components/database/ui";
 
 /** Itens do menu "…" de uma página, usados na barra lateral e no topo da página. */
 export function PageMenu({ pageId, onClose, onRename }: { pageId: string; onClose: () => void; onRename: () => void }) {
@@ -104,6 +104,7 @@ export function PageMenu({ pageId, onClose, onRename }: { pageId: string; onClos
       <button type="button" className={menuItem} onClick={copyLink}>
         {copied ? <Copy size={14} /> : <Link2 size={14} />} {copied ? "Link copiado" : "Copiar link"}
       </button>
+      <CopyIdItem value={pageId} label="Copiar ID" />
       <button type="button" className={menuItem} onClick={() => setMoving(true)}><CornerUpRight size={14} /> Mover para</button>
       <button type="button" className={menuItem} onClick={() => { onClose(); setTimeout(() => window.print(), 100); }}><Printer size={14} /> Exportar PDF</button>
       <button type="button" className={menuItem} onClick={async () => { onClose(); await (await import("@/lib/export/zip")).exportZip(pageId); }}><Archive size={14} /> Exportar página (.zip)</button>

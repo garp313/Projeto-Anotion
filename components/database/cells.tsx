@@ -1,15 +1,15 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DatePicker } from "./DatePicker";
 import { AlertTriangle, Check, ExternalLink, FileUp, Link2, Plus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { ChecklistItem, ColumnSchema, DatabaseRow, FileValue, PersonValue, SelectOption, StatusGroup } from "./types";
 import { COLORS, READ_ONLY, newId } from "./types";
 import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue, relatedLabel } from "./values";
-import type { Db } from "./useDatabase";
-import { OptionTag, Pop, fieldClass, menuItem, parseRef } from "./ui";
+import { useDatabase, type Db } from "./useDatabase";
+import { OptionTag, Pop, PropIcon, fieldClass, menuItem, parseRef } from "./ui";
 
 type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean; dense?: boolean };
 
@@ -315,7 +315,26 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   const [changing, setChanging] = useState(false);
   const [picked, setPicked] = useState<{ id: string; title: string } | null>(null);
   const [refNote, setRefNote] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ db: string; id: string } | null>(null);
   const qc = useQueryClient();
+  const pasted = parseRef(q);
+  // ID de uma linha de outro banco: descobre de qual banco ela é para trocar e já vincular.
+  const lookup = useQuery({
+    queryKey: ["ref-page", pasted?.id],
+    enabled: Boolean(pasted),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data } = await createClient().from("pages").select("id,title,icon,parent_id,is_database").eq("id", pasted!.id).maybeSingle();
+      return (data as TreePage | null) ?? null;
+    },
+  });
+  // Vincula depois que o campo já aponta para o banco novo: antes disso o espelho iria para o banco antigo.
+  useEffect(() => {
+    if (!pending || col.relationDatabaseId !== pending.db || !col.relationSyncProp) return;
+    const t = setTimeout(() => db.setValue(row.id, col.id, [pending.id]), 0);
+    setPending(null);
+    return () => clearTimeout(t);
+  }, [pending, col.relationDatabaseId, col.relationSyncProp]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
   if (target.missing) return <MissingRelation col={col} db={db} compact={compact || dense} />;
   const label = (r: DatabaseRow) => relatedLabel(col, r, db.ctx);
@@ -338,6 +357,19 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   const sameDb = refDb?.id === col.relationDatabaseId;
   const refCol = sameDb && ref?.column ? target.schema.find((c) => c.id === ref.column) : undefined;
   const nothingToDo = sameDb && !ref?.column;
+  const found = ref && !refDb && !refRow && lookup.data?.id === ref.id && !lookup.data.is_database ? lookup.data : undefined;
+  const foundDb = found?.parent_id ? (qc.getQueryData<TreePage[]>(["pages"]) ?? []).find((p) => p.id === found.parent_id && p.is_database) : undefined;
+  const linkFound = async () => {
+    if (!found || !foundDb) return;
+    if (foundDb.id === col.relationDatabaseId) { db.setValue(row.id, col.id, [...new Set([...ids, found.id])]); setQ(""); return; }
+    setBusy(true); setRefNote(null);
+    try {
+      await db.linkRelation({ ...col, relationShowProp: undefined }, foundDb.id);
+      setPending({ db: foundDb.id, id: found.id });
+      setQ("");
+    } catch { setRefNote("Não foi possível usar esse ID. Tente de novo."); }
+    finally { setBusy(false); }
+  };
   // Busca pelo nome e pela coluna mostrada: quem escolheu "Atribuir" procura pela pessoa.
   const shown = refRow ? [refRow] : ref ? [] : target.rows.filter((r) => `${r.title} ${label(r)}`.toLowerCase().includes(needle)).slice(0, 50);
   const chosen = target.rows.filter((r) => ids.includes(r.id));
@@ -397,12 +429,21 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
         onKeyDown={(e) => {
           if (e.key !== "Enter" || !typed) return;
           if (refDb) { e.preventDefault(); void applyRef(); }
+          else if (foundDb) { e.preventDefault(); void linkFound(); }
           else if (refRow) { e.preventDefault(); db.setValue(row.id, col.id, ids.includes(refRow.id) ? ids.filter((x) => x !== refRow.id) : [...ids, refRow.id]); }
           else if (!ref && !shown.length) { e.preventDefault(); void createNew(); }
         }} />
       {ref && !refRow && (
         <div className="px-2 py-1 text-xs">
-          {!refDb ? <p className="text-[var(--n-text-faint)]">Nenhum banco ou página deste banco com esse ID.</p>
+          {foundDb && found ? <>
+              <p className="mb-1">
+                Vincular “{found.icon} {found.title || "Sem título"}”, do banco “{foundDb.title || "Sem título"}”?
+                {foundDb.id !== col.relationDatabaseId && " O campo passa a buscar nesse banco e os vínculos com o banco atual deixam de valer."}
+              </p>
+              <button type="button" disabled={busy} onClick={() => void linkFound()}
+                className="rounded bg-[var(--n-accent)] px-2 py-0.5 font-medium text-white disabled:opacity-60">Vincular</button>
+            </>
+            : !refDb ? <p className="text-[var(--n-text-faint)]">{lookup.isFetching ? "Procurando esse ID…" : found ? "Essa página não está dentro de um banco." : "Nenhum banco ou linha com esse ID."}</p>
             : nothingToDo ? <p className="text-[var(--n-text-muted)]">Este campo já busca em “{refDb.title || "Sem título"}”.</p>
             : <>
                 <p className="mb-1">
@@ -451,6 +492,59 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
         ))}
       </div>
     </Pop>
+  );
+}
+
+const blank = (v: unknown) => v == null || v === "" || v === false || (Array.isArray(v) && !v.length);
+const DETAILS_SHOWN = 5;
+
+/** Página da linha: o que está preenchido no item ligado, para ver tudo sem sair da tarefa. */
+export function LinkedDetails({ col, row, db }: Pick<CellProps, "col" | "row" | "db">) {
+  const ids: string[] = rawValue(col, row, db.ctx) ?? [];
+  const on = col.relationDetails ?? col.relationDatabaseId !== db.id;
+  if (!on || !col.relationDatabaseId || !ids.length || db.ctx.related[col.relationDatabaseId]?.missing) return null;
+  return <LinkedCards targetId={col.relationDatabaseId} ids={ids} skip={col.relationSyncProp} />;
+}
+
+function LinkedCards({ targetId, ids, skip }: { targetId: string; ids: string[]; skip?: string }) {
+  // O banco inteiro do item ligado: as relações dele (Equipe, por exemplo) aparecem com as etiquetas certas.
+  const there = useDatabase(targetId);
+  const router = useRouter();
+  // Com muitos itens (as tarefas de um projeto, por exemplo) os cartões ficam fechados até pedir.
+  const [expanded, setExpanded] = useState(ids.length <= 2);
+  const rows = there.rows.filter((r) => ids.includes(r.id));
+  const cols = there.schema.filter((c) => c.type !== "title" && c.id !== skip);
+  if (!rows.length) return null;
+  if (!expanded) return (
+    <button type="button" onClick={() => setExpanded(true)} className="mb-1 ml-2 text-xs text-[var(--n-text-faint)] hover:underline">
+      Ver detalhes dos {rows.length} itens ligados
+    </button>
+  );
+  return (
+    <div className="mb-1 ml-2 space-y-1">
+      {rows.slice(0, DETAILS_SHOWN).map((r) => {
+        const filled = cols.filter((c) => !blank(rawValue(c, r, there.ctx)));
+        return (
+          <div key={r.id} aria-label={`Detalhes de ${r.title || "Sem título"}`} className="rounded-md border border-[var(--n-border)] px-2 py-1.5">
+            <button type="button" onClick={() => router.push(`/workspace/${r.id}`)} className="text-xs font-medium hover:underline">
+              {r.icon} {r.title || "Sem título"}
+            </button>
+            {filled.length ? (
+              <dl className="mt-0.5 grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] items-center gap-x-2">
+                {filled.map((c) => (
+                  <Fragment key={c.id}>
+                    <dt className="flex min-w-0 items-center gap-1 text-xs text-[var(--n-text-faint)]"><PropIcon type={c.type} size={12} /><span className="truncate">{c.name}</span></dt>
+                    {/* Só leitura: editar o item ligado é na página dele. */}
+                    <dd inert className="min-w-0"><PropertyValue col={c} row={r} db={there} dense /></dd>
+                  </Fragment>
+                ))}
+              </dl>
+            ) : <p className="text-xs text-[var(--n-text-faint)]">Nada preenchido neste item.</p>}
+          </div>
+        );
+      })}
+      {rows.length > DETAILS_SHOWN && <p className="px-1 text-xs text-[var(--n-text-faint)]">+{rows.length - DETAILS_SHOWN} itens ligados</p>}
+    </div>
   );
 }
 
