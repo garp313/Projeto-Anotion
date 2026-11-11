@@ -283,6 +283,8 @@ function databasesFor(qc: ReturnType<typeof useQueryClient>) {
 }
 
 const MAX_CHIPS = 12;
+/** Tipos que a relação mostra com a mesma cara da coluna de origem; os de texto já saem idênticos como texto. */
+const LOOKS_SAME = new Set(["select", "status", "multi_select", "person", "checkbox"]);
 
 /** O banco ligado foi excluído: sem isto o campo só dizia "Nenhuma página encontrada" e parecia quebrado. */
 function MissingRelation({ col, db, compact }: Pick<CellProps, "col" | "db" | "compact">) {
@@ -316,6 +318,15 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
   if (target.missing) return <MissingRelation col={col} db={db} compact={compact || dense} />;
   const label = (r: DatabaseRow) => relatedLabel(col, r, db.ctx);
+  // Coluna mostrada do tipo etiqueta ou pessoa: aparece igual à do banco de origem, com as mesmas cores.
+  const showCol = col.relationShowProp ? target.schema.find((c) => c.id === col.relationShowProp) : undefined;
+  const there = showCol && LOOKS_SAME.has(showCol.type) ? { ...db, ctx: { ...db.ctx, schema: target.schema } } : null;
+  const look = (r: DatabaseRow) => {
+    const v = there && showCol ? rawValue(showCol, r, there.ctx) : null;
+    return there && showCol && !(v == null || v === "" || (Array.isArray(v) && !v.length))
+      ? <PropertyPreview col={showCol} row={r} db={there} />
+      : null;
+  };
   const needle = q.trim().toLowerCase();
   // Busca pelo nome e pela coluna mostrada: quem escolheu "Atribuir" procura pela pessoa.
   const shown = target.rows.filter((r) => `${r.title} ${label(r)}`.toLowerCase().includes(needle)).slice(0, 50);
@@ -331,7 +342,17 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
   };
   return (
     <Pop triggerClass={cellBox}
-      trigger={dense && chosen.length > 1
+      trigger={there && chosen.length
+        ? <span title={chosen.map(label).join(", ")} className={`flex min-w-0 items-center gap-1 ${dense ? "overflow-hidden" : "flex-wrap"}`}>
+            {chosen.slice(0, MAX_CHIPS).map((r) => (
+              <span key={r.id} role="link" onClick={(e) => { e.stopPropagation(); e.preventDefault(); router.push(`/workspace/${r.id}`); }}
+                className="min-w-0 shrink-0 cursor-pointer hover:opacity-80">
+                {look(r) ?? <span className="rounded bg-[var(--n-hover)] px-1.5 text-sm">{label(r)}</span>}
+              </span>
+            ))}
+            {chosen.length > MAX_CHIPS && <span className="text-sm text-[var(--n-text-muted)]">+{chosen.length - MAX_CHIPS}</span>}
+          </span>
+        : dense && chosen.length > 1
         // Na tabela, os nomes por escrito numa linha; a lista inteira aparece ao parar o mouse.
         ? <span title={chosen.map(label).join(", ")} className="block min-w-0 truncate text-sm">{chosen.map(label).join(", ")}</span>
         : chosen.length
@@ -350,7 +371,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
       {shown.map((r) => (
         <button key={r.id} type="button" className={menuItem}
           onClick={() => db.setValue(row.id, col.id, ids.includes(r.id) ? ids.filter((x) => x !== r.id) : [...ids, r.id])}>
-          <span className="min-w-0 truncate">{r.icon} {label(r)}</span>
+          <span className="min-w-0 truncate">{look(r) ?? <>{r.icon} {label(r)}</>}</span>
           {label(r) !== (r.title || "Sem título") && <span className="min-w-0 shrink truncate text-xs text-[var(--n-text-faint)]">{r.title}</span>}
           {ids.includes(r.id) && <Check size={14} className="ml-auto shrink-0" />}
         </button>
