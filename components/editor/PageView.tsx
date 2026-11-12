@@ -155,7 +155,7 @@ export function PageView({ pageId }: { pageId: string }) {
                 </button>
                 <button onClick={useTemplate}
                   className="flex items-center gap-1.5 rounded-md border border-[var(--n-border)] px-2.5 py-1 transition-colors hover:bg-[var(--n-hover)]">
-                  <ListChecks size={14} className="text-purple-500" /> Tarefas e Projetos
+                  <ListChecks size={14} className="text-purple-500" /> Tarefas
                 </button>
               </div>
             )}

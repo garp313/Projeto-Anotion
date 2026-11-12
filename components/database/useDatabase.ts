@@ -294,9 +294,9 @@ export function useDatabase(databaseId: string) {
     addRow.mutate({ title: row.title ? `${row.title} (cópia)` : "", row_properties: row.row_properties });
 
   /** Aponta a relação para um banco e cria o espelho do outro lado, como o Notion faz. */
-  const linkRelation = async (col: ColumnSchema, targetId?: string) => {
+  const linkRelation = async (col: ColumnSchema, targetId?: string, extra: ColumnSchema[] = []) => {
     const rollups = col.relationDatabaseId && col.relationSyncProp && col.relationDatabaseId !== databaseId
-      ? await rollupsOf(col.relationDatabaseId, col.relationSyncProp) : [];
+      ? await rollupsOf(col.relationDatabaseId, col.relationSyncProp) : extra;
     if (col.relationDatabaseId && col.relationSyncProp) {
       if (col.relationDatabaseId === databaseId) {
         await saveSchema(schema.filter((c) => c.id !== col.relationSyncProp).map((c) => (c.id === col.id ? { ...c, relationDatabaseId: targetId, relationSyncProp: undefined } : c)));

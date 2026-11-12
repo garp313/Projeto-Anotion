@@ -75,6 +75,11 @@ export function BlockEditor({ pageId, initialContent, onStatus }: Props) {
           },
         },
         {
+          title: "Visão vinculada", subtext: "Mostre aqui um banco que já existe, colando o ID dele.", aliases: ["vinculada", "linked", "visao", "visão", "id"], group: "Blocos básicos",
+          icon: <Link2 size={18} />,
+          onItemClick: () => insertOrUpdateBlock(editor, { type: "database", props: { databaseId: "", linked: true } } as any),
+        },
+        {
           title: "Callout", subtext: "Destaque um texto com um emoji.", aliases: ["callout", "aviso", "destaque"], group: "Blocos básicos",
           icon: <MessageSquareQuote size={18} />,
           onItemClick: () => insertOrUpdateBlock(editor, { type: "callout" } as any),

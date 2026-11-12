@@ -84,18 +84,24 @@ const UUID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\
 /** ID de banco é o id da página; o de coluna leva o banco junto ("banco/coluna"), para valer sozinho em qualquer lugar. */
 export const columnRef = (databaseId: string, columnId: string) => `${databaseId}/${columnId}`;
 
-/** Lê um ID colado: aceita o ID puro, "banco/coluna" ou até o link da página. */
-export function parseRef(text: string): { id: string; column?: string } | null {
+/**
+ * Lê um ID colado: aceita o ID puro, "banco/coluna", "banco/visão" ou até o link da página.
+ * Visões nascem com "v_"; o resto depois da barra é coluna.
+ */
+export function parseRef(text: string): { id: string; column?: string; view?: string } | null {
   const m = UUID.exec(text.trim());
-  return m ? { id: m[1].toLowerCase(), column: m[2] } : null;
+  if (!m) return null;
+  const sub = m[2];
+  return { id: m[1].toLowerCase(), ...(sub?.startsWith("v_") ? { view: sub } : sub ? { column: sub } : {}) };
 }
 
 /** Item de menu que copia um ID e confirma ali mesmo. */
-export function CopyIdItem({ value, label }: { value: string; label: string }) {
+export function CopyIdItem({ value, label, before }: { value: string; label: string; before?: () => void }) {
   const [done, setDone] = useState<"ok" | "fail" | null>(null);
   return (
     <button type="button" className={menuItem} title={value}
       onClick={async () => {
+        before?.();
         try { await navigator.clipboard.writeText(value); setDone("ok"); } catch { setDone("fail"); }
         setTimeout(() => setDone(null), 1800);
       }}>
@@ -103,4 +109,12 @@ export function CopyIdItem({ value, label }: { value: string; label: string }) {
       <span className="min-w-0 flex-1 truncate">{done === "ok" ? "ID copiado!" : done === "fail" ? value : label}</span>
     </button>
   );
+}
+
+type Placed = { id: string; title: string; is_database: boolean; parent_id: string | null };
+/** Tabelas criadas dentro de páginas nascem como "Banco de dados": a página onde estão diferencia umas das outras. */
+export function dbLabel(db: Pick<Placed, "title" | "parent_id">, all: Placed[]) {
+  const title = db.title || "Sem título";
+  const parent = db.parent_id ? all.find((p) => p.id === db.parent_id) : undefined;
+  return parent && !parent.is_database ? `${title} · em ${parent.title || "Sem título"}` : title;
 }

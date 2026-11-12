@@ -1,11 +1,11 @@
 "use client";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
-  ArrowUpDown, Calendar, ChevronDown, Columns3, Copy, Download, Eye, EyeOff, Filter as FilterIcon, GalleryHorizontalEnd, GanttChart, Kanban, Layers,
-  List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Star, Table, Trash2, Upload, X,
+  ArrowUpDown, ArrowUpRight, Calendar, ChevronDown, Columns3, Copy, Download, Eye, EyeOff, Filter as FilterIcon, GalleryHorizontalEnd, GanttChart, Kanban, Layers,
+  Link2, List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Star, Table, Trash2, Upload, X,
 } from "lucide-react";
 import type { DatabaseRow, DatabaseViewConfig, Filter, FilterOp, PropType, ViewType } from "./types";
 import { VIEW_LABEL, defaultView, newId } from "./types";
@@ -18,6 +18,11 @@ import { useDatabase, type Db } from "./useDatabase";
 import { BoardView, CalendarView, GalleryView, ListView, TableView, TimelineView } from "./views";
 import { Choice, CopyIdItem, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
 import { DateText } from "./DatePicker";
+import { LinkSourceForm } from "./LinkSource";
+
+/** Bloco dentro de uma página: pode passar a mostrar outro banco (visão vinculada). */
+type Relink = { onRelink?: (db: string, view?: string) => void; linked?: boolean };
+const RelinkCtx = createContext<Relink>({});
 
 const ImportWizard = dynamic(() => import("@/components/import/ImportWizard").then((m) => m.ImportWizard), { ssr: false });
 const PageView = dynamic(() => import("@/components/editor/PageView").then((m) => m.PageView), { ssr: false });
@@ -62,6 +67,9 @@ function ViewTab({ view, active, db, onPick, onRemoved }: {
           })}
           <div className="my-1 border-t border-[var(--n-border)]" />
           <button type="button" className={menuItem} onClick={duplicate}><Copy size={14} /> Duplicar visão</button>
+          {/* A visão padrão só existe na memória até ser salva: sem isso o ID mudaria a cada carga. */}
+          <CopyIdItem value={`${db.id}/${view.id}`} label="Copiar ID da visão"
+            before={() => { if (!db.page?.row_properties?.__views?.length) void db.setViews(db.views); }} />
           {db.views.length > 1 && (
             <button type="button" className={`${menuItem} text-red-500`}
               onClick={() => { void db.setViews(db.views.filter((v) => v.id !== view.id)); onRemoved(); }}>
@@ -240,6 +248,16 @@ function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: 
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const { onRelink, linked } = useContext(RelinkCtx);
+  const { archivePage } = usePageTree();
+  const relink = (target: string, viewId?: string) => {
+    // A tabela vazia criada por este bloco não serve mais: vai para a lixeira (dá para restaurar).
+    // Com linhas, ou se este bloco já mostrava outro banco, nada é apagado.
+    if (!linked && db.rows.length === 0 && target !== db.id) archivePage.mutate(db.id);
+    setOpen(false); setLinking(false);
+    onRelink?.(target, viewId);
+  };
   const exportDb = async () => {
     setNote("Preparando o arquivo…");
     try { await (await import("@/lib/export/zip")).exportZip(db.id); setNote(null); setOpen(false); }
@@ -248,8 +266,9 @@ function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: 
   return (
     <>
     {importing && <ImportWizard databaseId={db.id} onClose={() => setImporting(false)} />}
-    <Pop open={open} onOpenChange={(o) => { setOpen(o); if (o) setNote(null); }} width={230} align="end" triggerClass={toolbarBtn}
+    <Pop open={open} onOpenChange={(o) => { setOpen(o); if (o) setNote(null); else setLinking(false); }} width={linking ? 300 : 230} align="end" triggerClass={toolbarBtn}
       trigger={<MoreHorizontal size={13} aria-label="Mais ações do banco" />}>
+      {linking ? <LinkSourceForm current={db.id} onPick={relink} onCancel={() => setLinking(false)} /> : <>
       <button type="button" className={menuItem} onClick={() => { downloadCsv(db.page?.title ?? "banco", toCsv(rows, visibleProps(db.schema, view), db.ctx)); setOpen(false); }}>
         <Download size={14} /> Exportar CSV (esta visão)
       </button>
@@ -267,7 +286,13 @@ function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: 
         );
       })}
       <MoveToTasks db={db} onDone={setNote} />
+      {onRelink && (
+        <button type="button" className={menuItem} onClick={() => setLinking(true)}>
+          <Link2 size={14} /> Mostrar outro banco aqui
+        </button>
+      )}
       {note && <p role="status" className="px-2 py-1 text-xs text-[var(--n-text-muted)]">{note}</p>}
+      </>}
     </Pop>
     </>
   );
@@ -378,9 +403,9 @@ function Toolbar({ view, db, rows, search, setSearch, onNew, defaults, onCreated
   );
 }
 
-export function DatabaseView({ databaseId }: { databaseId: string }) {
+export function DatabaseView({ databaseId, initialView, onRelink, linked }: { databaseId: string; initialView?: string } & Relink) {
   const db = useDatabase(databaseId);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(initialView ?? null);
   const [search, setSearch] = useState("");
   const [peek, setPeek] = useState<string | null>(null);
   const [addingView, setAddingView] = useState(false);
@@ -419,7 +444,14 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
   }
 
   return (
+    <RelinkCtx.Provider value={{ onRelink, linked }}>
     <div className="w-full">
+      {linked && (
+        // Mesmos dados do banco de origem: o título com link evita achar que é uma cópia.
+        <Link href={`/workspace/${db.id}`} className="mb-1 inline-flex items-center gap-1 text-sm font-semibold hover:underline">
+          <ArrowUpRight size={14} className="text-[var(--n-text-faint)]" /> {db.page?.icon} {db.page?.title || "Sem título"}
+        </Link>
+      )}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--n-border)]">
         <div className="flex min-w-0 flex-wrap items-center gap-0.5">
           {db.views.map((v) => (
@@ -461,5 +493,6 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
         document.body
       )}
     </div>
+    </RelinkCtx.Provider>
   );
 }

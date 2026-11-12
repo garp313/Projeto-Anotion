@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 
 const DatabaseView = dynamic(() => import("@/components/database/DatabaseView").then((m) => m.DatabaseView), { ssr: false });
+const LinkSourceForm = dynamic(() => import("@/components/database/LinkSource").then((m) => m.LinkSourceForm), { ssr: false });
 
 /** Callout com emoji clicável (alterna entre alguns emojis ao clicar). */
 const EMOJIS = ["💡", "⚠️", "✅", "📌", "❗", "🔥"];
@@ -43,15 +44,31 @@ export const Divider = createReactBlockSpec(
   { render: () => <hr className="my-3 w-full border-t border-[var(--n-border)]" /> }
 );
 
-/** Banco de dados inline: as linhas vivem numa página-filha, o bloco só a exibe. */
+/**
+ * Banco de dados inline: as linhas vivem numa página-filha, o bloco só a exibe.
+ * Vinculado (linked), mostra um banco de outro lugar, com os mesmos dados de lá.
+ */
 export const DatabaseBlock = createReactBlockSpec(
-  { type: "database", propSchema: { databaseId: { default: "" } }, content: "none" },
+  { type: "database", propSchema: { databaseId: { default: "" }, viewId: { default: "" }, linked: { default: false } }, content: "none" },
   {
-    render: ({ block }) => (
-      <div contentEditable={false} className="my-2 w-full">
-        {block.props.databaseId && <DatabaseView databaseId={block.props.databaseId} />}
-      </div>
-    ),
+    render: ({ block, editor }) => {
+      const relink = (databaseId: string, viewId?: string) =>
+        editor.updateBlock(block, { props: { databaseId, viewId: viewId ?? "", linked: true } } as any);
+      return (
+        <div contentEditable={false} className="my-2 w-full">
+          {block.props.databaseId
+            ? <DatabaseView key={block.props.databaseId} databaseId={block.props.databaseId} initialView={block.props.viewId || undefined}
+                linked={block.props.linked} onRelink={editor.isEditable ? relink : undefined} />
+            : (
+              <div className="rounded-md border border-dashed border-[var(--n-border)] p-2">
+                <p className="px-1 pb-1 text-sm font-medium">Visão vinculada</p>
+                <p className="px-1 pb-1 text-xs text-[var(--n-text-faint)]">Mostre aqui um banco que já existe. Os dados ficam no banco de origem.</p>
+                {editor.isEditable && <LinkSourceForm onPick={relink} />}
+              </div>
+            )}
+        </div>
+      );
+    },
   }
 );
 

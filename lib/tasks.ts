@@ -123,9 +123,11 @@ export async function spawnNextOccurrence(
 
 const color = (name: string) => COLORS.find((c) => c.name === name)!.cls;
 
-/** Cria Projetos e Tarefas já relacionados, com rollup de % concluído. Devolve o id de Tarefas. */
+/**
+ * Cria o banco Tarefas. Projetos não vem mais junto: cada time já tem o seu (às vezes uma tabela dentro
+ * de uma página), então o campo Projeto nasce sem banco e pede para ser ligado a ele. Devolve o id de Tarefas.
+ */
 export async function createTaskTemplate(workspaceId: string): Promise<string> {
-  const projectsId = crypto.randomUUID();
   const tasksId = crypto.randomUUID();
 
   const tasksSchema: ColumnSchema[] = [
@@ -149,35 +151,21 @@ export async function createTaskTemplate(workspaceId: string): Promise<string> {
         { id: "high", value: "Alta", color: color("Vermelho") },
       ],
     },
-    { id: "project", name: "Projeto", type: "relation", relationDatabaseId: projectsId, relationSyncProp: "tasks" },
+    { id: "project", name: "Projeto", type: "relation" },
     { id: "tags", name: "Tags", type: "multi_select", options: [] },
     { id: "subtasks", name: "Subtarefas", type: "checklist" },
     { id: "blocked_by", name: "Bloqueado por", type: "relation", relationDatabaseId: tasksId, relationSyncProp: "blocks" },
     { id: "blocks", name: "Bloqueia", type: "relation", relationDatabaseId: tasksId, relationSyncProp: "blocked_by" },
   ];
-  const projectsSchema: ColumnSchema[] = [
-    { id: "title", name: "Projeto", type: "title" },
-    { id: "period", name: "Período", type: "date" },
-    { id: "tasks", name: "Tarefas", type: "relation", relationDatabaseId: tasksId, relationSyncProp: "project" },
-    { id: "progress", name: "% concluído", type: "rollup", rollup: { relationProp: "tasks", targetProp: "status", fn: "percent_complete" } },
-    { id: "count", name: "Nº de tarefas", type: "rollup", rollup: { relationProp: "tasks", targetProp: "status", fn: "count" } },
-  ];
 
   const board = { ...defaultView("board", tasksSchema), name: "Quadro", groupBy: "status" };
   const calendar = { ...defaultView("calendar", tasksSchema), name: "Calendário", dateProp: "due" };
   const table = { ...defaultView("table", tasksSchema), name: "Todas" };
-  const now = Date.now();
 
-  const { error } = await createClient().from("pages").insert([
-    {
-      id: projectsId, workspace_id: workspaceId, title: "Projetos", icon: "📁", is_database: true, position: now,
-      database_schema: projectsSchema, row_properties: { __views: [defaultView("table", projectsSchema), { ...defaultView("timeline", projectsSchema), name: "Linha do tempo", dateProp: "period" }] },
-    },
-    {
-      id: tasksId, workspace_id: workspaceId, title: "Tarefas", icon: "✅", is_database: true, position: now + 1,
-      database_schema: tasksSchema, row_properties: { __views: [board, table, calendar] },
-    },
-  ]);
+  const { error } = await createClient().from("pages").insert({
+    id: tasksId, workspace_id: workspaceId, title: "Tarefas", icon: "✅", is_database: true, position: Date.now(),
+    database_schema: tasksSchema, row_properties: { __views: [board, table, calendar] },
+  });
   if (error) throw error;
   return tasksId;
 }

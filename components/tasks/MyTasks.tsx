@@ -174,7 +174,7 @@ export function MyTasks() {
             {!data?.hasTaskDatabase && (
               <button type="button" disabled={template.isPending || !workspace.data} onClick={() => template.mutate()}
                 className="rounded-md bg-[var(--n-accent)] px-3 py-1.5 text-sm font-medium text-white hover:brightness-95 disabled:opacity-60">
-                {template.isPending ? "Criando…" : "Criar bancos de Tarefas e Projetos"}
+                {template.isPending ? "Criando…" : "Criar banco de Tarefas"}
               </button>
             )}
             {template.isError && <p role="alert" className="mt-2 text-xs text-red-500">Não foi possível criar o modelo.</p>}

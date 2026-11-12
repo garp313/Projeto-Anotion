@@ -6,7 +6,7 @@ import type { ColumnSchema, DatabaseViewConfig, NumberFormat, PropType, RollupFn
 import { COLORS, DEFAULT_STATUS_OPTIONS, PROP_LABEL, newId } from "./types";
 import { evalFormula } from "./formula";
 import type { Db } from "./useDatabase";
-import { Choice, CopyIdItem, PropIcon, columnRef, fieldClass, menuItem } from "./ui";
+import { Choice, CopyIdItem, PropIcon, columnRef, dbLabel, fieldClass, menuItem } from "./ui";
 
 export const ADDABLE_TYPES = (Object.keys(PROP_LABEL) as PropType[]).filter((t) => t !== "title");
 
@@ -135,7 +135,7 @@ function ConfigFor({ col, db, save }: { col: ColumnSchema; db: Db; save: (c: Col
               <span role="alert" className="mb-1 block text-xs text-orange-600">Banco relacionado excluído — escolha outro.</span>
             )}
             <Choice label="Relacionar com" width={240} value={col.relationDatabaseId ?? ""}
-              options={dbs.map((p) => ({ value: p.id, label: p.title || "Sem título" }))}
+              options={dbs.map((p) => ({ value: p.id, label: dbLabel(p, pages.data ?? []) }))}
               onChange={(id) => void db.linkRelation(col, id)} />
           </label>
           {col.relationDatabaseId && (

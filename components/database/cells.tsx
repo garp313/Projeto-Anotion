@@ -9,7 +9,8 @@ import type { ChecklistItem, ColumnSchema, DatabaseRow, FileValue, PersonValue, 
 import { COLORS, READ_ONLY, newId } from "./types";
 import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue, relatedLabel } from "./values";
 import { useDatabase, type Db } from "./useDatabase";
-import { OptionTag, Pop, PropIcon, fieldClass, menuItem, parseRef } from "./ui";
+import { OptionTag, Pop, PropIcon, dbLabel, fieldClass, menuItem, parseRef } from "./ui";
+import { LinkSourceForm } from "./LinkSource";
 
 type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean; dense?: boolean };
 
@@ -276,6 +277,45 @@ function FilesField({ col, row, db, compact, dense }: CellProps) {
 type TreePage = { id: string; title: string; icon: string | null; is_database: boolean; parent_id: string | null };
 
 /** Bancos para escolher. Lê do que já está carregado: esta célula se repete em toda linha. */
+const allPages = (qc: ReturnType<typeof useQueryClient>) => qc.getQueryData<TreePage[]>(["pages"]) ?? [];
+
+/** Campo ainda sem banco (o Projeto do modelo nasce assim): colar o ID ou escolher, e já ligar. */
+function PickRelationTarget({ col, db, compact }: Pick<CellProps, "col" | "db" | "compact">) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const status = db.schema.find((c) => c.type === "status");
+  const [rollups, setRollups] = useState(true);
+  const link = async (target: string) => {
+    setBusy(true); setNote(null);
+    // Como no modelo antigo: o banco de projetos ganha % concluído e nº de tarefas, contados pelo Status daqui.
+    const extra: ColumnSchema[] = status && rollups && target !== db.id ? [
+      { id: "", name: "% concluído", type: "rollup", rollup: { relationProp: "", targetProp: status.id, fn: "percent_complete" } },
+      { id: "", name: "Nº de tarefas", type: "rollup", rollup: { relationProp: "", targetProp: status.id, fn: "count" } },
+    ] : [];
+    try { await db.linkRelation(col, target, extra); setOpen(false); }
+    catch { setNote("Não foi possível ligar. Tente de novo."); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Pop open={open} onOpenChange={setOpen} triggerClass={cellBox} width={320}
+      trigger={<span className="text-[var(--n-text-faint)]">{compact ? "" : `Ligar “${col.name}” a um banco`}</span>}>
+      <p className="px-2 pt-1 text-xs text-[var(--n-text-muted)]">
+        Cole o ID do banco (menu “…” do banco → Copiar ID do banco) ou escolha na lista.
+      </p>
+      {status && (
+        <label className={`${menuItem} text-xs`}>
+          <input type="checkbox" checked={rollups} onChange={(e) => setRollups(e.target.checked)} className="accent-[var(--n-accent)]" />
+          Mostrar % concluído e nº de tarefas no outro banco
+        </label>
+      )}
+      {busy ? <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Ligando…</p>
+        : <LinkSourceForm includeAll confirmLabel="Ligar" describe={(f) => <>Ligar “{col.name}” ao banco “{f.title}”? As tarefas passam a escolher itens de lá.</>} onPick={(id) => void link(id)} />}
+      {note && <p role="alert" className="px-2 pb-1 text-xs text-red-500">{note}</p>}
+    </Pop>
+  );
+}
+
 function databasesFor(qc: ReturnType<typeof useQueryClient>) {
   const all = qc.getQueryData<TreePage[]>(["pages"]) ?? [];
   const ids = new Set(all.filter((p) => p.is_database).map((p) => p.id));
@@ -298,7 +338,7 @@ function MissingRelation({ col, db, compact }: Pick<CellProps, "col" | "db" | "c
       {options.map((d) => (
         <button key={d.id} type="button" disabled={busy} className={`${menuItem} disabled:opacity-60`}
           onClick={async () => { setBusy(true); try { await db.linkRelation(col, d.id); } finally { setBusy(false); } }}>
-          <span className="truncate">{d.icon} {d.title || "Sem título"}</span>
+          <span className="truncate">{d.icon} {dbLabel(d, allPages(qc))}</span>
         </button>
       ))}
       {!options.length && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Não há outro banco neste espaço de trabalho.</p>}
@@ -335,7 +375,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
     setPending(null);
     return () => clearTimeout(t);
   }, [pending, col.relationDatabaseId, col.relationSyncProp]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!target) return <span className={`${cellBox} text-[var(--n-text-faint)]`}>{compact ? "" : "Escolha o banco de destino"}</span>;
+  if (!target) return <PickRelationTarget col={col} db={db} compact={compact || dense} />;
   if (target.missing) return <MissingRelation col={col} db={db} compact={compact || dense} />;
   const label = (r: DatabaseRow) => relatedLabel(col, r, db.ctx);
   // Coluna mostrada do tipo etiqueta ou pessoa: aparece igual à do banco de origem, com as mesmas cores.
@@ -473,7 +513,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
       <div className="mt-1 border-t border-[var(--n-border)] pt-1 text-xs text-[var(--n-text-muted)]">
         {!changing ? (
           <p className="flex items-center gap-1 px-2 py-0.5">
-            <span className="min-w-0 flex-1 truncate">Busca em: {databasesFor(qc).find((d) => d.id === col.relationDatabaseId)?.title || "banco"}</span>
+            <span className="min-w-0 flex-1 truncate">Busca em: {(() => { const d = allPages(qc).find((x) => x.id === col.relationDatabaseId); return d ? dbLabel(d, allPages(qc)) : "banco"; })()}</span>
             <button type="button" onClick={() => setChanging(true)} className="shrink-0 text-[var(--n-accent)] hover:underline">Trocar banco</button>
           </p>
         ) : picked ? (
@@ -486,8 +526,8 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
             </div>
           </div>
         ) : databasesFor(qc).filter((d) => d.id !== col.relationDatabaseId).map((d) => (
-          <button key={d.id} type="button" className={menuItem} onClick={() => setPicked({ id: d.id, title: d.title || "Sem título" })}>
-            <span className="truncate">{d.icon} {d.title || "Sem título"}</span>
+          <button key={d.id} type="button" className={menuItem} onClick={() => setPicked({ id: d.id, title: dbLabel(d, allPages(qc)) })}>
+            <span className="truncate">{d.icon} {dbLabel(d, allPages(qc))}</span>
           </button>
         ))}
       </div>
