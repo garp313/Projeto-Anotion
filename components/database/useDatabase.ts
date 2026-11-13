@@ -4,7 +4,8 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { createClient } from "@/lib/supabase/client";
 import { fetchPage, type PageFull } from "@/lib/hooks/usePageTree";
 import type { ColumnSchema, DatabaseRow, DatabaseViewConfig } from "./types";
-import { DEFAULT_SCHEMA, defaultView, newId } from "./types";
+import { COLORS, DEFAULT_SCHEMA, defaultView, newId } from "./types";
+import { feedKey, writeMirror, type Feed, type SourceMap, type SourceRef } from "./sources";
 import type { Ctx, RelatedDb } from "./values";
 import { addMirror, detachMirror, mirrorIsValid, removeMirror, repairRelations, rollupsOf } from "./relations";
 import { spawnNextOccurrence } from "@/lib/tasks";
@@ -30,6 +31,8 @@ async function fetchRows(databaseId: string): Promise<DatabaseRow[]> {
 
 // Referência estável: um [] novo a cada render invalidaria o contexto e recalcularia a tabela.
 const NO_MEMBERS: Member[] = [];
+const NO_SOURCES: SourceRef[] = [];
+const NO_MAPS: Record<string, Partial<SourceMap>> = {};
 
 type NewRow = { title?: string; icon?: string | null; content_json?: any[]; row_properties?: Record<string, any> };
 export type RowTemplate = NewRow & { id: string; name: string };
@@ -61,6 +64,23 @@ export function useDatabase(databaseId: string) {
   const rowsQuery = useQuery({ queryKey: rowsKey, queryFn: () => fetchRows(databaseId), refetchInterval: 20_000, refetchOnWindowFocus: true });
 
   const schema = useMemo(() => schemaOf(page.data), [page.data]);
+
+  // Fontes conectadas: as linhas delas chegam prontas (já traduzidas) pelo SourceFeed de cada uma.
+  const sources: SourceRef[] = page.data?.row_properties?.__sources ?? NO_SOURCES;
+  const feedQueries = useQueries({
+    queries: sources.map((s) => ({ queryKey: feedKey(databaseId, s.id), queryFn: async () => null as Feed | null, enabled: false, staleTime: Infinity })),
+  });
+  const feedStamp = feedQueries.map((q) => q.dataUpdatedAt).join();
+  const feeds = useMemo(
+    () => sources.map((ref, i) => ({ ref, feed: (feedQueries[i]?.data ?? undefined) as Feed | undefined })),
+    [sources, feedStamp] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const ownRows = rowsQuery.data;
+  const allRows = useMemo(() => {
+    const mirrored = feeds.flatMap((f) => (f.feed?.state === "ok" ? f.feed.rows : []));
+    return mirrored.length ? [...(ownRows ?? []), ...mirrored] : ownRows ?? [];
+  }, [ownRows, feeds]);
+  const mirrorOf = (rowId: string) => allRows.find((r) => r.id === rowId)?.mirror;
   const fallbackView = useRef<DatabaseViewConfig | null>(null);
   const views = useMemo<DatabaseViewConfig[]>(() => {
     const saved = page.data?.row_properties?.__views;
@@ -206,7 +226,11 @@ export function useDatabase(databaseId: string) {
       }
       return { prev };
     },
-    onError: (_e, _v, c) => { if (c?.prev) qc.setQueryData(rowsKey, c.prev); },
+    onError: (e: { code?: string }, _v, c) => {
+      if (c?.prev) qc.setQueryData(rowsKey, c.prev);
+      // Antes voltava calado: vindo de um painel que espelha este banco, a pessoa nem saberia por quê.
+      toast({ message: e?.code === "42501" ? "Você não tem permissão para editar este banco." : "Não foi possível salvar a alteração. Tente de novo." });
+    },
     onSuccess: async (_d, { rowId, colId, value }, c) => {
       const col = schema.find((x) => x.id === colId);
       const synced = page.data?.row_properties?.__calendarSync;
@@ -290,6 +314,13 @@ export function useDatabase(databaseId: string) {
     onError: (_e, _v, c) => { if (c?.prev) qc.setQueryData(rowsKey, c.prev); },
   });
 
+  /** Excluir só vale para as linhas daqui: as de uma fonte se excluem lá. */
+  const removeMine = (ids: string[]) => {
+    const mine = ids.filter((id) => !mirrorOf(id));
+    if (mine.length < ids.length) toast({ message: "Itens de uma fonte conectada não são excluídos por aqui. Abra a página na fonte para excluir." });
+    if (mine.length) removeRows.mutate(mine);
+  };
+
   const duplicateRow = (row: DatabaseRow) =>
     addRow.mutate({ title: row.title ? `${row.title} (cópia)` : "", row_properties: row.row_properties });
 
@@ -366,6 +397,42 @@ export function useDatabase(databaseId: string) {
     await setTemplates([...templates, { id: newId("t_"), name: title || "Modelo sem nome", title, icon, row_properties, content_json: data?.content_json ?? [] }]);
   };
 
+  // ---- Fontes conectadas ----
+  const savedMaps: Record<string, Partial<SourceMap>> = page.data?.row_properties?.__sourceMaps ?? NO_MAPS;
+  /** Coluna "Fonte" com uma opção por fonte: filtrar e agrupar por fonte usam o que já existe. */
+  const tagSchema = (refs: SourceRef[], labels: Record<string, string>) => {
+    const tag = schema.find((c) => c.sourceTag);
+    const old = tag?.options ?? [];
+    const options = refs.map((r, i) => {
+      const was = old.find((o) => o.id === r.id);
+      return { id: r.id, value: labels[r.id] ?? was?.value ?? "Fonte", color: was?.color ?? COLORS[(i + 3) % COLORS.length].cls };
+    });
+    if (tag) return schema.map((c) => (c.sourceTag ? { ...c, options } : c));
+    return refs.length ? [...schema, { id: newId("p_"), name: "Fonte", type: "select" as const, sourceTag: true, options }] : schema;
+  };
+  const writeSources = async (next: SourceRef[], labels: Record<string, string>) => {
+    await saveSchema(tagSchema(next, labels));
+    await patchProp("__sources", next);
+  };
+  const connectSource = async (targetId: string, viewId: string | undefined, label: string) => {
+    if (targetId === databaseId) throw new Error("Um banco não pode ser fonte dele mesmo.");
+    if (sources.some((s) => s.databaseId === targetId && (s.viewId ?? "") === (viewId ?? ""))) throw new Error("Essa fonte já está conectada.");
+    const ref: SourceRef = { id: newId("src_"), databaseId: targetId, ...(viewId ? { viewId } : {}) };
+    await writeSources([...sources, ref], { [ref.id]: label });
+    return ref;
+  };
+  /** Trocar mantém o lugar e a cor na coluna Fonte; o mapeamento de cada banco fica guardado à parte. */
+  const replaceSource = async (id: string, targetId: string, viewId: string | undefined, label: string) => {
+    if (targetId === databaseId) throw new Error("Um banco não pode ser fonte dele mesmo.");
+    await writeSources(sources.map((s) => (s.id === id ? { id, databaseId: targetId, ...(viewId ? { viewId } : {}) } : s)), { [id]: label });
+  };
+  /** Desconectar só tira os espelhos daqui: nada é apagado na fonte e o mapeamento fica salvo. */
+  const disconnectSource = async (id: string) => {
+    await writeSources(sources.filter((s) => s.id !== id), {});
+    qc.removeQueries({ queryKey: feedKey(databaseId, id) });
+  };
+  const saveSourceMap = (sourceDbId: string, map: SourceMap) => patchProp("__sourceMaps", { ...savedMaps, [sourceDbId]: map });
+
   const addColumn = (col: Omit<ColumnSchema, "id">) => {
     const created = { ...col, id: newId("p_") };
     void saveSchema([...schema, created]);
@@ -374,18 +441,26 @@ export function useDatabase(databaseId: string) {
 
   return {
     id: databaseId, page: page.data, schema, views, ctx, me, members,
-    rows: rowsQuery.data ?? [],
+    rows: allRows,
+    sources, feeds, savedMaps, connectSource, replaceSource, disconnectSource, saveSourceMap,
     isLoading: rowsQuery.isLoading || page.isLoading,
     error: rowsQuery.error ?? page.error,
     saveSchema, saveColumn, addColumn, removeColumn, linkRelation, linkRollup, unlinkMirror, addSelfRelation, createRelated, setViews, saveView,
     templates, setTemplates, saveTemplate, setCalendarSync, defaultTemplateId, setDefaultTemplate,
     addRow: (init?: NewRow) => addRow.mutateAsync(init ?? {}),
-    setValue: (rowId: string, colId: string, value: any) => setValue.mutate({ rowId, colId, value }),
-    removeRow: (rowId: string) => removeRows.mutate([rowId]),
+    setValue: (rowId: string, colId: string, value: any) => {
+      const m = mirrorOf(rowId);
+      if (!m) return setValue.mutate({ rowId, colId, value });
+      // Linha de uma fonte: a mudança vai para a página original, traduzida.
+      const err = m.writable.includes(colId) ? writeMirror(databaseId, m.sourceId, rowId, colId, value)
+        : m.editable ? "Este campo vem da fonte e não pode ser alterado por aqui." : "Você não tem permissão para editar esta fonte.";
+      if (err) toast({ message: err });
+    },
+    removeRow: (rowId: string) => removeMine([rowId]),
     discardRow,
-    removeRows: (ids: string[]) => removeRows.mutate(ids),
-    moveRow: (rowId: string, position: number) => moveRow.mutate({ rowId, position }),
-    duplicateRow,
+    removeRows: (ids: string[]) => removeMine(ids),
+    moveRow: (rowId: string, position: number) => { if (!mirrorOf(rowId)) moveRow.mutate({ rowId, position }); },
+    duplicateRow: (row: DatabaseRow) => { if (!row.mirror) duplicateRow(row); },
   };
 }
 

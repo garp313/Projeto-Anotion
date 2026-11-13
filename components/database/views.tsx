@@ -5,7 +5,7 @@ import type { ColumnSchema, DatabaseRow, DatabaseViewConfig, RollupFn } from "./
 import { DEFAULT_STATUS_OPTIONS, READ_ONLY } from "./types";
 import { aggregate, asDate, displayText, dueTone, groupRows, isBlank, isDone, parseDay, rawValue, visibleProps, type Group } from "./values";
 import type { Db } from "./useDatabase";
-import { PropertyPreview, PropertyValue } from "./cells";
+import { MirrorNote, PropertyPreview, PropertyValue } from "./cells";
 import { AddPropertyMenu, PropertyMenu } from "./PropertyMenu";
 import { Choice, CopyIdItem, OptionTag, Pop, PropIcon, menuItem } from "./ui";
 
@@ -30,7 +30,7 @@ function groupValue(col: ColumnSchema | undefined, g: Group): Record<string, any
 const PAGE_SIZE = 100;
 const BOARD_PAGE = 30;
 const CALENDAR_LIMIT = 3;
-const canDropInto = (col?: ColumnSchema) => col && ["select", "status", "multi_select", "person"].includes(col.type);
+const canDropInto = (col?: ColumnSchema) => col && !col.sourceTag && ["select", "status", "multi_select", "person"].includes(col.type);
 
 /** Título em edição logo após criar o cartão: Enter ou clicar fora confirma. */
 function QuickTitle({ row, db, onDone, className = "" }: { row: DatabaseRow; db: Db; onDone: () => void; className?: string }) {
@@ -86,11 +86,16 @@ function RowMenu({ row, db, open }: { row: DatabaseRow; db: Db; open: (id: strin
   return (
     <Pop open={show} onOpenChange={setShow} width={190} triggerClass="rounded p-0.5 hover:bg-[var(--n-active)]"
       trigger={<MoreHorizontal size={14} aria-label="Opções da linha" />}>
-      <button type="button" className={menuItem} onClick={() => { setShow(false); open(row.id); }}><Maximize2 size={14} /> Abrir</button>
+      <button type="button" className={menuItem} onClick={() => { setShow(false); open(row.id); }}><Maximize2 size={14} /> {row.mirror ? "Abrir na fonte" : "Abrir"}</button>
+      {row.mirror ? <>
+        <CopyIdItem value={row.id} label="Copiar ID da linha" />
+        <p className="px-2 py-1 text-[11px] text-[var(--n-text-faint)]">Vem de {row.mirror.label}. Duplicar e excluir são feitos lá.</p>
+      </> : <>
       <button type="button" className={menuItem} onClick={() => { setShow(false); db.duplicateRow(row); }}><Copy size={14} /> Duplicar</button>
       <button type="button" className={menuItem} onClick={() => { setShow(false); void db.saveTemplate(row); }}><BookmarkPlus size={14} /> Salvar como modelo</button>
       <CopyIdItem value={row.id} label="Copiar ID da linha" />
       <button type="button" className={`${menuItem} text-red-500`} onClick={() => { setShow(false); db.removeRow(row.id); }}><Trash2 size={14} /> Excluir</button>
+      </>}
     </Pop>
   );
 }
@@ -134,7 +139,7 @@ const CALCS: [RollupFn | "", string][] = [
 
 /** Edição em massa: reaproveita o editor da célula e aplica o valor em todas as linhas marcadas. */
 function BulkBar({ db, ids, clear }: { db: Db; ids: string[]; clear: () => void }) {
-  const cols = db.schema.filter((c) => c.type !== "title" && !READ_ONLY.includes(c.type) && !["files", "relation", "checklist"].includes(c.type));
+  const cols = db.schema.filter((c) => c.type !== "title" && !c.sourceTag && !READ_ONLY.includes(c.type) && !["files", "relation", "checklist"].includes(c.type));
   const [colId, setColId] = useState(cols.find((c) => c.type === "status")?.id ?? cols[0]?.id ?? "");
   const col = cols.find((c) => c.id === colId);
   const sample = db.rows.find((r) => r.id === ids[0]);
@@ -314,7 +319,8 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
 function Card({ row, db, cols, open, draggable, onDragStart }: {
   row: DatabaseRow; db: Db; cols: ColumnSchema[]; open: (id: string) => void; draggable?: boolean; onDragStart?: (e: React.DragEvent) => void;
 }) {
-  const shown = cols.filter((c) => c.type !== "title" && !isBlank(rawValue(c, row, db.ctx)));
+  // A origem já aparece no selo da linha espelhada: a coluna Fonte só repetiria.
+  const shown = cols.filter((c) => c.type !== "title" && !(row.mirror && c.sourceTag) && !isBlank(rawValue(c, row, db.ctx)));
   return (
     <button type="button" draggable={draggable} onDragStart={onDragStart} onClick={() => open(row.id)}
       className="block w-full overflow-hidden rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] p-2 text-left shadow-sm hover:bg-[var(--n-hover)]">
@@ -324,6 +330,7 @@ function Card({ row, db, cols, open, draggable, onDragStart }: {
           {shown.map((c) => <PropertyPreview key={c.id} col={c} row={row} db={db} />)}
         </span>
       )}
+      {row.mirror && <span className="mt-1 block"><MirrorNote row={row} full /></span>}
     </button>
   );
 }
@@ -372,7 +379,7 @@ export function BoardView({ db, view, rows, open, defaults }: ViewProps) {
             {g.rows.slice(0, more[g.id] ?? BOARD_PAGE).map((r) => (
               r.id === fresh
                 ? <QuickTitle key={r.id} row={r} db={db} onDone={() => setFresh(null)} />
-                : <Card key={r.id} row={r} db={db} cols={cols} open={open} draggable onDragStart={(e) => e.dataTransfer.setData("text/row", r.id)} />
+                : <Card key={r.id} row={r} db={db} cols={cols} open={open} draggable={!r.mirror || r.mirror.writable.includes(gcol.id)} onDragStart={(e) => e.dataTransfer.setData("text/row", r.id)} />
             ))}
             {g.rows.length > (more[g.id] ?? BOARD_PAGE) && (
               <button type="button" onClick={() => setMore((m) => ({ ...m, [g.id]: (m[g.id] ?? BOARD_PAGE) + BOARD_PAGE }))}
@@ -404,6 +411,7 @@ export function ListView({ db, view, rows, open, defaults }: ViewProps) {
           {g.rows.map((r) => (
             <div key={r.id} className="group flex items-center gap-3 rounded px-2 py-1 hover:bg-[var(--n-hover)]">
               <button type="button" onClick={() => open(r.id)} className="min-w-0 flex-1 truncate text-left text-sm">{r.icon ?? "📄"} {titleOf(r)}</button>
+              <MirrorNote row={r} />
               <span className="flex min-w-0 items-center gap-3">
                 {cols.map((c) => <PropertyPreview key={c.id} col={c} row={r} db={db} />)}
               </span>
@@ -438,6 +446,7 @@ export function GalleryView({ db, view, rows, open, defaults }: ViewProps) {
             <span className="block truncate text-sm font-medium">{r.icon} {titleOf(r)}</span>
             <span className="mt-1 flex flex-col items-start gap-1">
               {cols.map((c) => <PropertyPreview key={c.id} col={c} row={r} db={db} />)}
+              <MirrorNote row={r} full />
             </span>
           </span>
         </button>

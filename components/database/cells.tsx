@@ -644,9 +644,34 @@ function TitleField({ col, row, db, autoFocus }: CellProps) {
   );
 }
 
+/** Etiqueta de onde veio a linha e os campos da fonte sem par aqui (só leitura). */
+export function MirrorNote({ row, full }: { row: DatabaseRow; full?: boolean }) {
+  const m = row.mirror;
+  if (!m) return null;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1">
+      <span title={`Vem de ${m.label}${m.editable ? "" : " (só leitura)"}`} className="max-w-full truncate rounded border border-[var(--n-border)] px-1 text-[10px] text-[var(--n-text-muted)]">
+        ↗ {m.label}
+      </span>
+      {full && m.extras.map((x, i) => (
+        <span key={i} title={`${x.name}: ${x.text} (só leitura, vem da fonte)`} className="max-w-full truncate rounded bg-[var(--n-hover)] px-1 text-[10px] text-[var(--n-text-muted)]">
+          <span className="text-[var(--n-text-faint)]">{x.name}:</span> {x.text}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Editor da propriedade, usado em tabela, cartões e na página da linha. */
 export function PropertyValue(props: CellProps) {
   const { col, row, db, compact, dense } = props;
+  // Coluna Fonte e campos de uma linha espelhada que não voltam para a fonte: só leitura.
+  if (col.sourceTag || (row.mirror && !row.mirror.writable.includes(col.id))) {
+    const preview = col.type === "title"
+      ? <span className="block truncate text-sm font-medium">{row.title || "Sem título"}</span>
+      : <PropertyPreview col={col} row={row} db={db} />;
+    return <span title={row.mirror && !col.sourceTag ? "Vem da fonte: só leitura aqui" : undefined} className={`${cellBox} cursor-default`}>{preview ?? <Empty compact={compact} dense={dense} />}</span>;
+  }
   if (READ_ONLY.includes(col.type)) {
     const v = rawValue(col, row, db.ctx);
     const err = v && typeof v === "object" && "__error" in v ? (v.__error as string) : null;

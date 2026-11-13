@@ -19,6 +19,7 @@ import { BoardView, CalendarView, GalleryView, ListView, TableView, TimelineView
 import { Choice, CopyIdItem, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
 import { DateText } from "./DatePicker";
 import { LinkSourceForm } from "./LinkSource";
+import { ConnectSourceItem, DashboardSummary, SourcesBar } from "./SourceFeed";
 
 /** Bloco dentro de uma página: pode passar a mostrar outro banco (visão vinculada). */
 type Relink = { onRelink?: (db: string, view?: string) => void; linked?: boolean };
@@ -286,6 +287,7 @@ function DataMenu({ db, view, rows }: { db: Db; view: DatabaseViewConfig; rows: 
         );
       })}
       <MoveToTasks db={db} onDone={setNote} />
+      <ConnectSourceItem db={db} onDone={() => setOpen(false)} />
       {onRelink && (
         <button type="button" className={menuItem} onClick={() => setLinking(true)}>
           <Link2 size={14} /> Mostrar outro banco aqui
@@ -446,6 +448,7 @@ export function DatabaseView({ databaseId, initialView, onRelink, linked }: { da
   return (
     <RelinkCtx.Provider value={{ onRelink, linked }}>
     <div className="w-full">
+      <SourcesBar db={db} />
       {linked && (
         // Mesmos dados do banco de origem: o título com link evita achar que é uma cópia.
         <Link href={`/workspace/${db.id}`} className="mb-1 inline-flex items-center gap-1 text-sm font-semibold hover:underline">
@@ -473,6 +476,7 @@ export function DatabaseView({ databaseId, initialView, onRelink, linked }: { da
           filtersOpen={filtersOpen} onToggleFilters={() => setFilterBar(!filtersOpen)} />
       </div>
       <FilterBar view={view} db={db} open={filtersOpen} shown={rows.length} />
+      {db.sources.length > 0 && <DashboardSummary db={db} rows={rows} />}
 
       {db.error ? <p role="alert" className="py-8 text-center text-sm text-red-500">Não foi possível carregar o banco de dados.</p>
         : db.isLoading ? <div className="py-12 text-center text-xs text-[var(--n-text-faint)]">Carregando…</div>

@@ -26,6 +26,8 @@ export type ColumnSchema = {
   relationShowProp?: string;
   /** Na página da linha, mostra as propriedades do item ligado. Sem valor: liga quando o destino é outro banco. */
   relationDetails?: boolean;
+  /** Coluna "Fonte": diz de qual fonte conectada a linha veio. Só leitura. */
+  sourceTag?: boolean;
   rollup?: { relationProp: string; targetProp: string; fn: RollupFn };
   idPrefix?: string;
 };
@@ -84,6 +86,19 @@ export type DatabaseRow = {
   created_by?: string | null;
   last_edited_by?: string | null;
   seq?: number;
+  /** Linha espelhada de uma fonte conectada: mora em outro banco e só é mostrada aqui. */
+  mirror?: RowMirror;
+};
+
+/** Origem de uma linha espelhada e o que dá para editar dela por aqui. */
+export type RowMirror = {
+  sourceId: string;
+  databaseId: string;
+  label: string;
+  editable: boolean;
+  writable: string[];
+  /** Campos da fonte sem par aqui: aparecem só leitura no cartão. */
+  extras: { name: string; text: string }[];
 };
 
 /** As 10 cores do Notion. As classes ficam literais para o Tailwind encontrá-las. */
