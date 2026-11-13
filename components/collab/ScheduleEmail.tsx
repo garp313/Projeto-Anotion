@@ -5,8 +5,8 @@ import { Calendar, Mail, Send, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { connectGoogle, memberName, notMigrated, useMembers } from "@/lib/collab";
 import { Choice, Pop, fieldClass, toolbarBtn } from "@/components/database/ui";
-import { DateText, MonthGrid } from "@/components/database/DatePicker";
-import { REPEAT_LABEL, addDays, firstSendOn, todayInBrazil, type Repeat, type ScheduledEmail } from "@/lib/scheduledEmail";
+import { DateText, MonthGrid, TimeText } from "@/components/database/DatePicker";
+import { DEFAULT_SEND_AT, REPEAT_LABEL, addDays, firstSendOn, sendAtOf, timeInBrazil, todayInBrazil, type Repeat, type ScheduledEmail } from "@/lib/scheduledEmail";
 
 const REPEATS = (Object.keys(REPEAT_LABEL) as Repeat[]).map((value) => ({ value, label: REPEAT_LABEL[value] }));
 const toBr = (date: string) => date.split("-").reverse().join("/");
@@ -33,6 +33,7 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
   const [subject, setSubject] = useState<string | null>(null);
   const [message, setMessage] = useState("Olá! Por favor, preencha a planilha desta página.");
   const [date, setDate] = useState(() => addDays(todayInBrazil(), 1));
+  const [time, setTime] = useState(DEFAULT_SEND_AT);
   const [repeat, setRepeat] = useState<Repeat>("none");
   const [days, setDays] = useState<number[]>([]);
   const [note, setNote] = useState<string | null>(null);
@@ -55,12 +56,12 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
     mutationFn: async () => {
       const { error } = await createClient().from("scheduled_emails").insert({
         page_id: pageId, recipients: picked, subject: subjectText.trim(), message: message.trim(),
-        first_send_on: date, send_on: firstSendOn(date, repeat, days), repeat, repeat_days: days,
+        first_send_on: date, send_on: firstSendOn(date, repeat, days), send_at: time, repeat, repeat_days: days,
       });
       if (error) throw error;
     },
     onSuccess: () => { setPicked([]); setNote("E-mail programado."); qc.invalidateQueries({ queryKey: key }); },
-    onError: (e: { code?: string }) => setNote(["PGRST204", "42703"].includes(e.code ?? "") ? "Falta rodar a migration 0013 no Supabase." : "Não foi possível programar. Tente de novo."),
+    onError: (e: { code?: string }) => setNote(["PGRST204", "42703"].includes(e.code ?? "") ? "Falta rodar as migrations 0013 e 0016 no Supabase." : "Não foi possível programar. Tente de novo."),
   });
   const cancel = useMutation({
     mutationFn: async (id: string) => {
@@ -93,7 +94,8 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
   };
   const submit = () => {
     if (!ready()) return;
-    if (date <= todayInBrazil()) return setNote("Escolha uma data a partir de amanhã. Para hoje, use Enviar agora.");
+    const today = todayInBrazil();
+    if (date < today || (date === today && time <= timeInBrazil())) return setNote("Esse horário já passou. Escolha um mais tarde ou use Enviar agora.");
     if (repeat !== "none" && !days.length) return setNote("Escolha ao menos um dia para repetir.");
     create.mutate();
   };
@@ -130,6 +132,7 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
                     trigger={<Calendar size={14} aria-label="Abrir calendário" />}>
                     <MonthGrid start={date} onPick={(d) => { setDate(d); setCalendar(false); }} />
                   </Pop>
+                  <div className="w-[68px] shrink-0"><TimeText label="Horário do envio" value={time} onCommit={setTime} /></div>
                 </div>
               </div>
               <div><span className={label}>Repetir</span><Choice label="Repetir" value={repeat} options={REPEATS} onChange={(r) => { setRepeat(r); setDays(dayOf(date, r)); }} /></div>
@@ -149,7 +152,7 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
                 {repeat === "monthly" && days.some((d) => d > 28) && <p className="mt-1 text-xs text-[var(--n-text-faint)]">Em meses mais curtos, sai no último dia do mês.</p>}
               </div>
             )}
-            <p className="text-xs text-[var(--n-text-faint)]">Sai do seu Gmail por volta das 8h, com o link desta página.</p>
+            <p className="text-xs text-[var(--n-text-faint)]">Sai do seu Gmail no horário escolhido (Brasília, em até 5 min), com o link desta página.</p>
             <div className="flex gap-2">
               <button type="button" disabled={sendNow.isPending} onClick={() => { if (ready()) sendNow.mutate({ pageId, recipients: picked, subject: subjectText.trim(), message: message.trim() }); }}
                 className="flex-1 rounded border border-[var(--n-border)] px-2 py-1 text-xs font-medium hover:bg-[var(--n-hover)] disabled:opacity-60">Enviar agora</button>
@@ -164,7 +167,7 @@ export function ScheduleEmail({ pageId, title }: { pageId: string; title: string
                 {list.data!.map((s) => (
                   <li key={s.id} className="flex items-center gap-1 text-xs">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate">{toBr(s.send_on)} · {daysLabel(s)} · {s.recipients.length} pessoa(s)</span>
+                      <span className="block truncate">{toBr(s.send_on)} às {sendAtOf(s)} · {daysLabel(s)} · {s.recipients.length} pessoa(s)</span>
                       {s.last_error && <span role="alert" className="block text-red-500">{s.last_error === "not_connected" ? "Não enviado: conecte o Google." : s.last_error === "failed" ? "Não enviado. Nova tentativa amanhã." : s.last_error}</span>}
                     </span>
                     <button type="button" aria-label="Enviar agora" title="Enviar agora" disabled={sendNow.isPending} onClick={() => sendNow.mutate({ id: s.id })} className="rounded p-1 hover:bg-[var(--n-hover)]"><Send size={12} /></button>

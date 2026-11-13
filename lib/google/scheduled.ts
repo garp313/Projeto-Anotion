@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { accessTokenFor } from "./tokens";
 import { sendGmail } from "./gmail";
-import { nextSendOn, type ScheduledEmail } from "@/lib/scheduledEmail";
+import { addDays, isDue, nextSendOn, type ScheduledEmail } from "@/lib/scheduledEmail";
 
 /** Envia para cada pessoa. Sem token, usa a sessão de quem está logado. */
 export async function sendToRecipients(row: Pick<ScheduledEmail, "page_id" | "recipients" | "subject" | "message">, origin: string, token?: string) {
@@ -18,10 +18,11 @@ export async function sendToRecipients(row: Pick<ScheduledEmail, "page_id" | "re
 }
 
 /** Roda no cron. Reserva o envio antes de mandar: o cron pode rodar duas vezes e ninguém recebe em dobro. */
-export async function sendDueEmails(admin: SupabaseClient, origin: string, today: string) {
+export async function sendDueEmails(admin: SupabaseClient, origin: string, today: string, now = new Date()) {
   const report = { sent: 0, failed: 0 };
   const { data } = await admin.from("scheduled_emails").select("*").eq("active", true).lte("send_on", today);
-  for (const row of (data ?? []) as ScheduledEmail[]) {
+  // Só o que já chegou no horário escolhido.
+  for (const row of ((data ?? []) as ScheduledEmail[]).filter((r) => isDue(r, now))) {
     try {
       const { data: page } = await admin.from("pages").select("is_archived").eq("id", row.page_id).maybeSingle();
       if (!page || page.is_archived) continue;
@@ -42,8 +43,8 @@ export async function sendDueEmails(admin: SupabaseClient, origin: string, today
       report.failed += failed.length;
       await admin.from("scheduled_emails").update(sent
         ? { last_sent_at: new Date().toISOString(), last_error: failed.length ? `Não enviado para: ${failed.join(", ")}` : null }
-        // Ninguém recebeu: devolve para a fila e tenta na próxima manhã.
-        : { send_on: row.send_on, active: true, last_error: reason ?? "failed" }).eq("id", row.id);
+        // Ninguém recebeu: tenta de novo amanhã no mesmo horário, sem insistir a cada poucos minutos.
+        : { send_on: addDays(today, 1), active: true, last_error: reason ?? "failed" }).eq("id", row.id);
     } catch (e) {
       console.error(e);
       report.failed++;

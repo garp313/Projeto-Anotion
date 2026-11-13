@@ -4,13 +4,26 @@ export const REPEAT_LABEL: Record<Repeat, string> = { none: "Não repetir", week
 
 export type ScheduledEmail = {
   id: string; page_id: string; created_by: string; recipients: string[]; subject: string; message: string;
-  first_send_on: string; send_on: string; repeat: Repeat; repeat_days?: number[]; active: boolean; last_sent_at: string | null; last_error: string | null;
+  first_send_on: string; send_on: string; send_at?: string; repeat: Repeat; repeat_days?: number[]; active: boolean; last_sent_at: string | null; last_error: string | null;
 };
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-/** O cron roda às 8h de Brasília: é a data de lá que decide o que vence hoje. */
+/** Os horários são de Brasília (UTC-3, sem horário de verão): é a data de lá que decide o que vence hoje. */
 export const todayInBrazil = (now = new Date()) => iso(new Date(now.getTime() - 3 * 3_600_000));
+
+/** Hora de Brasília em "hh:mm". */
+export const timeInBrazil = (now = new Date()) => new Date(now.getTime() - 3 * 3_600_000).toISOString().slice(11, 16);
+
+/** Horário padrão de quem programou antes de existir o campo. */
+export const DEFAULT_SEND_AT = "08:00";
+export const sendAtOf = (row: { send_at?: string | null }) => (row.send_at ?? DEFAULT_SEND_AT).slice(0, 5);
+
+/** Já passou da data e do horário escolhidos? Atrasados (cron parado) também saem. */
+export function isDue(row: { send_on: string; send_at?: string | null }, now = new Date()) {
+  const today = todayInBrazil(now);
+  return row.send_on < today || (row.send_on === today && sendAtOf(row) <= timeInBrazil(now));
+}
 
 export function addDays(date: string, days: number) {
   const d = new Date(`${date}T00:00:00Z`);
