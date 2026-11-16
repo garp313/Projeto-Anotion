@@ -125,3 +125,19 @@ describe("fontes conectadas", () => {
     expect(toSource({ colId: "assignee", value: [{ id: "u2", name: "Estevão" }], map: fixed, target: tasks, sctx, members })).toEqual({ col: "eq", value: ["pr2"] });
   });
 });
+
+describe("tarefas dentro do item da fonte", () => {
+  it("esconde só as ligadas a um item espelhado visível", async () => {
+    const { nestedUnderSource } = await import("@/components/database/sources");
+    const schema = [{ id: "title", name: "Nome", type: "title" }, { id: "proj", name: "Projeto", type: "relation" }] as never[];
+    const mirror = { sourceId: "src_1", databaseId: "d", label: "D", editable: true, writable: [], extras: [] };
+    const rows = [
+      { id: "pai", title: "Dashboards", row_properties: {}, mirror },
+      { id: "t1", title: "a", row_properties: { proj: ["pai"] } },
+      { id: "t2", title: "b", row_properties: { proj: ["outro"] } },
+      { id: "t3", title: "c", row_properties: {} },
+    ] as never[];
+    expect([...nestedUnderSource(rows, schema)]).toEqual(["t1"]);
+    expect(nestedUnderSource((rows as { id: string }[]).filter((r) => r.id !== "pai") as never[], schema).size).toBe(0);
+  });
+});

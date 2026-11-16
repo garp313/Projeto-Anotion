@@ -443,6 +443,8 @@ export function useDatabase(databaseId: string) {
     id: databaseId, page: page.data, schema, views, ctx, me, members,
     rows: allRows,
     sources, feeds, savedMaps, connectSource, replaceSource, disconnectSource, saveSourceMap,
+    showNested: Boolean(page.data?.row_properties?.__showNested),
+    setShowNested: (v: boolean) => patchProp("__showNested", v),
     isLoading: rowsQuery.isLoading || page.isLoading,
     error: rowsQuery.error ?? page.error,
     saveSchema, saveColumn, addColumn, removeColumn, linkRelation, linkRollup, unlinkMirror, addSelfRelation, createRelated, setViews, saveView,

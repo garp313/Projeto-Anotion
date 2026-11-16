@@ -7,7 +7,7 @@ import { memberName, useMyRole } from "@/lib/collab";
 import { useDatabase, type Db } from "./useDatabase";
 import type { ColumnSchema, DatabaseRow } from "./types";
 import { applyView, asDate, parseDay } from "./values";
-import { compatible, effectiveMap, feedKey, mirrorRow, setWriter, toSource, type Feed, type SourceMap, type SourceRef } from "./sources";
+import { compatible, effectiveMap, feedKey, mirrorRow, nestedUnderSource, setWriter, toSource, type Feed, type SourceMap, type SourceRef } from "./sources";
 import { LinkSourceForm } from "./LinkSource";
 import { OptionTag, Pop, dbLabel, menuItem } from "./ui";
 
@@ -92,6 +92,7 @@ export function SourcesBar({ db }: { db: Db }) {
   const [reviewing, setReviewing] = useState<SourceRef | null>(null);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const nested = useMemo(() => nestedUnderSource(db.rows, db.schema).size, [db.rows, db.schema]);
   if (!db.sources.length) return null;
   return (
     <div aria-label="Fontes conectadas" className="mb-2 space-y-1">
@@ -130,6 +131,15 @@ export function SourcesBar({ db }: { db: Db }) {
         trigger={<span>+ Conectar outra fonte</span>}>
         <ConnectForm db={db} onDone={() => setAdding(false)} />
       </Pop>
+      {nested > 0 && (
+        <span className="ml-2 text-xs text-[var(--n-text-faint)]">
+          {db.showNested ? `${nested} ${nested === 1 ? "tarefa ligada" : "tarefas ligadas"} a itens da fonte aparecem separadas · `
+            : `${nested} ${nested === 1 ? "tarefa está" : "tarefas estão"} dentro dos itens da fonte · `}
+          <button type="button" onClick={() => void db.setShowNested(!db.showNested)} className="text-[var(--n-accent)] hover:underline">
+            {db.showNested ? "Deixar dentro dos itens" : "Mostrar separadas"}
+          </button>
+        </span>
+      )}
       {reviewing && <MappingDialog db={db} src={reviewing} onClose={() => setReviewing(null)} />}
     </div>
   );

@@ -256,6 +256,22 @@ export type Feed = {
   viewName?: string;
   viewMissing?: boolean;
 };
+/**
+ * Tarefas daqui ligadas (por qualquer relação) a um item de uma fonte que está aparecendo aqui.
+ * Elas ficam dentro do cartão do item, em vez de soltas no quadro. Sem o item visível, continuam soltas.
+ */
+export function nestedUnderSource(rows: DatabaseRow[], schema: ColumnSchema[]): Set<string> {
+  const mirrors = new Set(rows.filter((r) => r.mirror).map((r) => r.id));
+  const out = new Set<string>();
+  if (!mirrors.size) return out;
+  const rels = schema.filter((c) => c.type === "relation");
+  for (const r of rows) {
+    if (r.mirror) continue;
+    if (rels.some((c) => { const v = r.row_properties?.[c.id]; return Array.isArray(v) && v.some((id) => mirrors.has(id)); })) out.add(r.id);
+  }
+  return out;
+}
+
 export const feedKey = (hostId: string, sourceId: string) => ["source_feed", hostId, sourceId] as const;
 
 /** Grava uma mudança feita no banco que mostra; devolve o erro para avisar, ou null. */

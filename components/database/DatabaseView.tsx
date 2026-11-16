@@ -20,6 +20,7 @@ import { Choice, CopyIdItem, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } f
 import { DateText } from "./DatePicker";
 import { LinkSourceForm } from "./LinkSource";
 import { ConnectSourceItem, DashboardSummary, SourcesBar } from "./SourceFeed";
+import { nestedUnderSource } from "./sources";
 
 /** Bloco dentro de uma página: pode passar a mostrar outro banco (visão vinculada). */
 type Relink = { onRelink?: (db: string, view?: string) => void; linked?: boolean };
@@ -417,7 +418,13 @@ export function DatabaseView({ databaseId, initialView, onRelink, linked }: { da
   useEffect(() => setFilterBar(null), [view.id]);
   const filtersOpen = filterBar ?? view.filters.length > 0;
 
-  const rows = useMemo(() => applyView(db.rows, view, db.ctx, search), [db.rows, view, db.ctx, search]);
+  // Com fonte conectada, as tarefas de um item da fonte ficam dentro do cartão dele, não soltas.
+  const base = useMemo(() => {
+    if (!db.sources.length || db.showNested) return db.rows;
+    const nested = nestedUnderSource(db.rows, db.schema);
+    return nested.size ? db.rows.filter((r) => !nested.has(r.id)) : db.rows;
+  }, [db.rows, db.schema, db.sources.length, db.showNested]);
+  const rows = useMemo(() => applyView(base, view, db.ctx, search), [base, view, db.ctx, search]);
 
   // Uma linha nova herda os filtros "É" ativos, para não sumir assim que é criada.
   const defaults = useMemo(() => {
