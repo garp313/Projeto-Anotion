@@ -6,7 +6,7 @@ import { usePageTree } from "@/lib/hooks/usePageTree";
 import { memberName, useMyRole } from "@/lib/collab";
 import { useDatabase, type Db } from "./useDatabase";
 import type { ColumnSchema, DatabaseRow } from "./types";
-import { applyView, asDate, parseDay } from "./values";
+import { applyView, asDate, dueDay, parseDay } from "./values";
 import { compatible, effectiveMap, feedKey, mirrorRow, nestedUnderSource, setWriter, toSource, type Feed, type SourceMap, type SourceRef } from "./sources";
 import { LinkSourceForm } from "./LinkSource";
 import { OptionTag, Pop, dbLabel, menuItem } from "./ui";
@@ -257,7 +257,8 @@ export function DashboardSummary({ db, rows }: { db: Db; rows: DatabaseRow[] }) 
   const done = rows.filter((r) => optOf(r)?.group === "complete").length;
   const late = rows.filter((r) => {
     const d = due ? asDate(r.row_properties?.[due.id]) : null;
-    const end = d ? parseDay((d.end ?? d.start).slice(0, 10)) : null;
+    const last = dueDay(d);
+    const end = last ? parseDay(last) : null;
     return end && end < today && optOf(r)?.group !== "complete";
   }).length;
   const byStatus = (status?.options ?? []).map((o) => ({ o, n: rows.filter((r) => optOf(r)?.id === o.id).length }));

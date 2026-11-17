@@ -6,7 +6,7 @@ import { AlarmClock, Archive, ArchiveRestore, AtSign, Bell, CircleDot, Mail, Mai
 import { createClient } from "@/lib/supabase/client";
 import { connectGoogle, notMigrated, type Notification } from "@/lib/collab";
 import { loadTasks, type Task } from "@/lib/tasks";
-import { formatDateValue } from "@/components/database/values";
+import { dueDay, formatDateValue } from "@/components/database/values";
 import { EmailsPanel } from "./EmailsPanel";
 import { isAssignedTo } from "@/lib/assignee";
 
@@ -18,8 +18,8 @@ const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 
 /** Prazo e lembrete são calculados na hora: aparecem só aqui, sem e-mail. */
 function dueAlert(t: Task): { label: string; tone: string } | null {
-  if (!t.due) return null;
-  const due = (t.due.end ?? t.due.start).slice(0, 10);
+  const due = dueDay(t.due);
+  if (!t.due || !due) return null;
   const now = new Date();
   const today = iso(now);
   if (due < today) return { label: "Atrasada", tone: "text-red-500" };

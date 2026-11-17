@@ -14,7 +14,7 @@ export function toCsv(rows: DatabaseRow[], cols: ColumnSchema[], ctx: Ctx, opts:
     if (c.type === "relation" && opts.relation) return opts.relation(v);
     // Só o nome perderia o anexo ao reimportar.
     if (c.type === "files") return (v as { name: string; url?: string }[]).map((f) => f.url ?? f.name).join(", ");
-    if (c.type === "date") { const d = asDate(v); return d ? [toBr(d.start), toBr(d.end)].filter(Boolean).join(" → ") : ""; }
+    if (c.type === "date") { const d = asDate(v); return d ? [toBr(d.start), d.openEnd ? "Em aberto" : toBr(d.end)].filter(Boolean).join(" → ") : ""; }
     return displayText(c, v, ctx);
   };
   const lines = [cols.map((c) => quote(c.name)), ...rows.map((r) => cols.map((c) => quote(cell(c, r))))];

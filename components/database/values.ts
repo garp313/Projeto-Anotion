@@ -18,6 +18,19 @@ export const asDate = (v: any): DateValue | null =>
 
 export const parseDay = (s: string) => new Date(s.length === 10 ? `${s}T00:00:00` : s);
 
+const todayLocal = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`; };
+
+/** Dia em que vence (fim ou data única). Término em aberto não vence: null. */
+export const dueDay = (d: DateValue | null | undefined) => (!d || d.openEnd ? null : (d.end ?? d.start).slice(0, 10));
+
+/** Último dia ocupado, para linha do tempo e filtros: término em aberto vai até hoje (ou o início, se ainda não começou). */
+export function rangeEnd(d: DateValue): string {
+  if (d.end) return d.end;
+  if (!d.openEnd) return d.start;
+  const t = todayLocal();
+  return d.start.slice(0, 10) > t ? d.start : t;
+}
+
 export function formatDateValue(v: any): string {
   const d = asDate(v);
   if (!d) return "";
@@ -26,7 +39,7 @@ export function formatDateValue(v: any): string {
     const day = x.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
     return d.time ? `${day} ${x.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : day;
   };
-  return d.end ? `${f(d.start)} → ${f(d.end)}` : f(d.start);
+  return d.end ? `${f(d.start)} → ${f(d.end)}` : d.openEnd ? `${f(d.start)} → Em aberto` : f(d.start);
 }
 
 export function formatNumber(n: any, fmt: NumberFormat = "number"): string {
@@ -54,7 +67,8 @@ export function dueTone(col: ColumnSchema, row: DatabaseRow, ctx: Ctx): string {
   if (!d) return "";
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const due = (d.end ?? d.start).slice(0, 10);
+  const due = dueDay(d);
+  if (!due) return "";
   return due < today ? "text-red-500 font-medium" : due === today ? "text-orange-500 font-medium" : "";
 }
 
@@ -223,7 +237,7 @@ export function isDone(row: DatabaseRow, schema: ColumnSchema[]) {
 function matchesRelative(op: FilterOp, v: any, row: DatabaseRow, ctx: Ctx) {
   const d = asDate(v);
   if (!d) return false;
-  const start = localDay(d.start), end = localDay(d.end ?? d.start);
+  const start = localDay(d.start), end = localDay(rangeEnd(d));
   const now = new Date();
   const at = (n: number) => dayIso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
   const today = at(0);
@@ -233,7 +247,7 @@ function matchesRelative(op: FilterOp, v: any, row: DatabaseRow, ctx: Ctx) {
     case "this_week": return overlaps(at(-now.getDay()), at(6 - now.getDay()));
     case "next_7": return overlaps(today, at(7));
     case "this_month": return overlaps(dayIso(new Date(now.getFullYear(), now.getMonth(), 1)), dayIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
-    case "overdue": return end < today && !isDone(row, ctx.schema);
+    case "overdue": return !d.openEnd && end < today && !isDone(row, ctx.schema);
     default: return true;
   }
 }

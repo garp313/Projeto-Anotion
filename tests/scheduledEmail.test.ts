@@ -24,3 +24,15 @@ describe("horário do e-mail programado", () => {
     expect(isDue({ send_on: "2026-11-13" }, new Date("2026-11-13T11:00:00Z"))).toBe(true);
   });
 });
+
+describe("término em aberto", () => {
+  it("não vence, aparece como Em aberto e vai até hoje", async () => {
+    const { dueDay, rangeEnd, formatDateValue } = await import("@/components/database/values");
+    const d = { start: "2026-11-06", end: null, openEnd: true };
+    expect(dueDay(d)).toBeNull();
+    expect(dueDay({ start: "2026-11-06", end: "2026-11-30" })).toBe("2026-11-30");
+    expect(formatDateValue(d)).toMatch(/→ Em aberto$/);
+    expect(rangeEnd(d) >= "2026-11-06").toBe(true);
+    expect(rangeEnd({ start: "2099-01-01", openEnd: true })).toBe("2099-01-01");
+  });
+});

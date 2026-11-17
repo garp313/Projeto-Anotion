@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BookmarkPlus, ChevronLeft, ChevronRight, Copy, GripVertical, Maximize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import type { ColumnSchema, DatabaseRow, DatabaseViewConfig, RollupFn } from "./types";
 import { DEFAULT_STATUS_OPTIONS, READ_ONLY } from "./types";
-import { aggregate, asDate, displayText, dueTone, groupRows, isBlank, isDone, parseDay, rawValue, visibleProps, type Group } from "./values";
+import { aggregate, asDate, displayText, dueTone, groupRows, isBlank, isDone, parseDay, rangeEnd, rawValue, visibleProps, type Group } from "./values";
 import type { Db } from "./useDatabase";
 import { MirrorNote, PropertyPreview, PropertyValue } from "./cells";
 import { AddPropertyMenu, PropertyMenu } from "./PropertyMenu";
@@ -676,7 +676,7 @@ export function TimelineView({ db, view, rows, open, defaults }: ViewProps) {
   // Item fora da janela ocupava linha vazia: a tela parecia sem dados, com o conteúdo lá embaixo.
   const inView = (r: DatabaseRow) => {
     const v = asDate(rawValue(col, r, db.ctx))!;
-    return index(v.end ?? v.start) >= 0 && index(v.start) < days.length;
+    return index(rangeEnd(v)) >= 0 && index(v.start) < days.length;
   };
   const dated = allDated.filter(inView).sort((a, b) => asDate(rawValue(col, a, db.ctx))!.start.localeCompare(asDate(rawValue(col, b, db.ctx))!.start));
   const earliest = allDated.map((r) => asDate(rawValue(col, r, db.ctx))!.start.slice(0, 10)).sort()[0];
@@ -725,7 +725,8 @@ export function TimelineView({ db, view, rows, open, defaults }: ViewProps) {
             {dated.map((r) => {
               const v = asDate(rawValue(col, r, db.ctx))!;
               // A barra começa na borda quando o item vem de antes da janela.
-              const s = Math.max(index(v.start), 0), e = Math.min(index(v.end ?? v.start), days.length - 1);
+              // Término em aberto: a barra vai até hoje.
+              const s = Math.max(index(v.start), 0), e = Math.min(index(rangeEnd(v)), days.length - 1);
               const off = drag?.id === r.id ? drag.dx : 0;
               return (
                 <div key={r.id} className="relative h-8">

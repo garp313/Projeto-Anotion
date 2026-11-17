@@ -35,6 +35,8 @@ export type ColumnSchema = {
 export type Repeat = "daily" | "weekly" | "monthly";
 export type DateValue = {
   start: string; end?: string | null; time?: boolean;
+  /** Término em aberto: tem início, o fim ainda não foi definido. Não vence nem fica atrasado. */
+  openEnd?: boolean;
   /** Dias de antecedência do lembrete no Inbox (0 = no dia). */
   remind?: number | null;
   /** Ao concluir, cria a próxima ocorrência. */

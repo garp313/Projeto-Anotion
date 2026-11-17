@@ -10,7 +10,7 @@ import { createTaskTemplate, loadTasks, setTaskStatus, type Task } from "@/lib/t
 import { Choice, OptionTag, Pop, menuItem } from "@/components/database/ui";
 import { isAssignedTo } from "@/lib/assignee";
 import { useMembers } from "@/lib/collab";
-import { formatDateValue } from "@/components/database/values";
+import { dueDay, formatDateValue } from "@/components/database/values";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -32,7 +32,7 @@ function bucketize(tasks: Task[]): Bucket[] {
   ];
   const at = (id: string) => buckets.find((b) => b.id === id)!.tasks;
   for (const t of tasks) {
-    const due = (t.due?.end ?? t.due?.start)?.slice(0, 10);
+    const due = dueDay(t.due);
     if (!due) at("none").push(t);
     else if (due < today) at("late").push(t);
     else if (due === today) at("today").push(t);

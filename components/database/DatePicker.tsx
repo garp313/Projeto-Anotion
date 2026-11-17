@@ -170,7 +170,8 @@ export function DatePicker({ value, onChange, onDone, extras = true }: {
   value: DateValue | null; onChange: (v: DateValue | null) => void; onDone?: () => void; extras?: boolean;
 }) {
   const [field, setField] = useState<"start" | "end">("start");
-  const hasEnd = Boolean(value?.end);
+  const openEnd = Boolean(value?.openEnd);
+  const hasEnd = Boolean(value?.end) || openEnd;
   const time = Boolean(value?.time);
   const start = value?.start ? dayOf(value.start) : "";
   const end = value?.end ? dayOf(value.end) : "";
@@ -179,6 +180,8 @@ export function DatePicker({ value, onChange, onDone, extras = true }: {
   const setDay = (key: "start" | "end", day: string) => {
     const base: DateValue = value ?? { start: day };
     const next: DateValue = { ...base, [key]: compose(day, clock(base[key])) };
+    // Escolheu um fim: deixa de estar em aberto.
+    if (key === "end") delete next.openEnd;
     // O início nunca fica depois do fim.
     if (next.end && dayOf(next.end) < dayOf(next.start)) {
       if (key === "start") next.end = next.start; else next.start = next.end;
@@ -187,12 +190,13 @@ export function DatePicker({ value, onChange, onDone, extras = true }: {
   };
   const typed = (key: "start" | "end") => (iso: string) => {
     if (iso) return setDay(key, iso);
-    if (key === "end") onChange(value ? { ...value, end: null } : null);
+    if (key === "end") onChange(value ? { ...value, end: null, openEnd: true } : null);
     else onChange(null);
   };
   const pick = (day: string) => {
     setDay(hasEnd ? field : "start", day);
-    if (hasEnd && field === "start") setField("end");
+    // Em aberto: clicar no calendário mexe no início, a menos que a pessoa tenha clicado em "Fim: em aberto".
+    if (hasEnd && field === "start" && !openEnd) setField("end");
     else if (!time) onDone?.();
   };
   const setTime = (key: "start" | "end") => (t: string) => {
@@ -217,10 +221,21 @@ export function DatePicker({ value, onChange, onDone, extras = true }: {
         </div>
         {hasEnd && (
           <div className="mt-1 flex items-center gap-1">
-            <span onFocus={() => setField("end")} className="min-w-0 flex-1">
-              <DateText label="Fim" value={end} onCommit={typed("end")} />
-            </span>
-            {time && <TimeText label="Hora de fim" value={clock(value?.end)} onCommit={setTime("end")} />}
+            {openEnd ? (
+              <button type="button" onClick={() => setField("end")} title="Escolha um dia no calendário para definir o fim"
+                className={`min-w-0 flex-1 rounded border px-2 py-1 text-left text-sm ${field === "end" ? "border-[var(--n-accent)]" : "border-[var(--n-border)]"} text-[var(--n-text-muted)]`}>
+                Fim: em aberto
+              </button>
+            ) : (
+              <span onFocus={() => setField("end")} className="min-w-0 flex-1">
+                <DateText label="Fim" value={end} onCommit={typed("end")} />
+              </span>
+            )}
+            {time && !openEnd && <TimeText label="Hora de fim" value={clock(value?.end)} onCommit={setTime("end")} />}
+            {!openEnd && (
+              <button type="button" onClick={() => { if (value) onChange({ ...value, end: null, openEnd: true }); setField("start"); }}
+                className="shrink-0 rounded border border-[var(--n-border)] px-1.5 py-1 text-xs hover:bg-[var(--n-hover)]">Em aberto</button>
+            )}
           </div>
         )}
       </div>
@@ -236,7 +251,7 @@ export function DatePicker({ value, onChange, onDone, extras = true }: {
           <input type="checkbox" checked={hasEnd} className="accent-[var(--n-accent)]"
             onChange={(e) => {
               const base: DateValue = value ?? { start: compose(today, "09:00") };
-              onChange({ ...base, end: e.target.checked ? base.start : null });
+              onChange({ ...base, openEnd: undefined, end: e.target.checked ? base.start : null });
               setField(e.target.checked ? "end" : "start");
             }} /> Data de término
         </label>
