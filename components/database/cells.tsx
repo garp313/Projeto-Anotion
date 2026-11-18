@@ -11,6 +11,7 @@ import { asDate, displayText, dueTone, formatDateValue, formatNumber, rawValue, 
 import { useDatabase, type Db } from "./useDatabase";
 import { OptionTag, Pop, PropIcon, dbLabel, fieldClass, menuItem, parseRef } from "./ui";
 import { LinkSourceForm } from "./LinkSource";
+import { PageIcon } from "@/components/PageIcon";
 
 type CellProps = { col: ColumnSchema; row: DatabaseRow; db: Db; compact?: boolean; autoFocus?: boolean; dense?: boolean };
 
@@ -338,7 +339,7 @@ function MissingRelation({ col, db, compact }: Pick<CellProps, "col" | "db" | "c
       {options.map((d) => (
         <button key={d.id} type="button" disabled={busy} className={`${menuItem} disabled:opacity-60`}
           onClick={async () => { setBusy(true); try { await db.linkRelation(col, d.id); } finally { setBusy(false); } }}>
-          <span className="truncate">{d.icon} {dbLabel(d, allPages(qc))}</span>
+          <span className="truncate"><PageIcon icon={d.icon} /> {dbLabel(d, allPages(qc))}</span>
         </button>
       ))}
       {!options.length && <p className="px-2 py-1 text-xs text-[var(--n-text-faint)]">Não há outro banco neste espaço de trabalho.</p>}
@@ -477,7 +478,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
         <div className="px-2 py-1 text-xs">
           {foundDb && found ? <>
               <p className="mb-1">
-                Vincular “{found.icon} {found.title || "Sem título"}”, do banco “{foundDb.title || "Sem título"}”?
+                Vincular “<PageIcon icon={found.icon} /> {found.title || "Sem título"}”, do banco “{foundDb.title || "Sem título"}”?
                 {foundDb.id !== col.relationDatabaseId && " O campo passa a buscar nesse banco e os vínculos com o banco atual deixam de valer."}
               </p>
               <button type="button" disabled={busy} onClick={() => void linkFound()}
@@ -488,7 +489,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
             : <>
                 <p className="mb-1">
                   {sameDb ? <>Mostrar a coluna “{refCol?.name ?? "colada"}” de “{refDb.title || "Sem título"}”?</>
-                    : <>Buscar em “{refDb.icon} {refDb.title || "Sem título"}”{ref.column ? <>, mostrando a coluna colada</> : null}? Vínculos deste campo com o banco atual deixam de valer.</>}
+                    : <>Buscar em “<PageIcon icon={refDb.icon} /> {refDb.title || "Sem título"}”{ref.column ? <>, mostrando a coluna colada</> : null}? Vínculos deste campo com o banco atual deixam de valer.</>}
                 </p>
                 <button type="button" disabled={busy} onClick={() => void applyRef()}
                   className="rounded bg-[var(--n-accent)] px-2 py-0.5 font-medium text-white disabled:opacity-60">Usar este ID</button>
@@ -499,7 +500,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
       {shown.map((r) => (
         <button key={r.id} type="button" className={menuItem}
           onClick={() => db.setValue(row.id, col.id, ids.includes(r.id) ? ids.filter((x) => x !== r.id) : [...ids, r.id])}>
-          <span className="min-w-0 truncate">{look(r) ?? <>{r.icon} {label(r)}</>}</span>
+          <span className="min-w-0 truncate">{look(r) ?? <><PageIcon icon={r.icon} /> {label(r)}</>}</span>
           {label(r) !== (r.title || "Sem título") && <span className="min-w-0 shrink truncate text-xs text-[var(--n-text-faint)]">{r.title}</span>}
           {ids.includes(r.id) && <Check size={14} className="ml-auto shrink-0" />}
         </button>
@@ -527,7 +528,7 @@ function RelationField({ col, row, db, compact, dense }: CellProps) {
           </div>
         ) : databasesFor(qc).filter((d) => d.id !== col.relationDatabaseId).map((d) => (
           <button key={d.id} type="button" className={menuItem} onClick={() => setPicked({ id: d.id, title: dbLabel(d, allPages(qc)) })}>
-            <span className="truncate">{d.icon} {dbLabel(d, allPages(qc))}</span>
+            <span className="truncate"><PageIcon icon={d.icon} /> {dbLabel(d, allPages(qc))}</span>
           </button>
         ))}
       </div>
@@ -567,7 +568,7 @@ function LinkedCards({ targetId, ids, skip }: { targetId: string; ids: string[];
         return (
           <div key={r.id} aria-label={`Detalhes de ${r.title || "Sem título"}`} className="rounded-md border border-[var(--n-border)] px-2 py-1.5">
             <button type="button" onClick={() => router.push(`/workspace/${r.id}`)} className="text-xs font-medium hover:underline">
-              {r.icon} {r.title || "Sem título"}
+              <PageIcon icon={r.icon} /> {r.title || "Sem título"}
             </button>
             {filled.length ? (
               <dl className="mt-0.5 grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] items-center gap-x-2">

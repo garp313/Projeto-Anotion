@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { DatabaseViewConfig } from "./types";
 import type { ReactNode } from "react";
 import { dbLabel, fieldClass, menuItem, parseRef } from "./ui";
+import { PageIcon } from "@/components/PageIcon";
 
 type Found = { db: string; title: string; view?: string; viewName?: string };
 type Listed = { id: string; title: string; icon: string | null; is_database: boolean; parent_id: string | null };
@@ -84,7 +85,7 @@ export function LinkSourceForm({ current, onPick, onCancel, confirmLabel = "Most
       {!found && listed.length > 0 && <p className="px-1 pt-1 text-[11px] text-[var(--n-text-faint)]">Ou escolha um banco</p>}
       {!found && listed.map((d) => (
         <button key={d.id} type="button" className={menuItem} onClick={() => onPick(d.id)}>
-          {d.icon ?? <Database size={14} className="text-[var(--n-text-faint)]" />} <span className="truncate">{dbLabel(d, all)}</span>
+          {d.icon ? <PageIcon icon={d.icon} /> : <Database size={14} className="text-[var(--n-text-faint)]" />} <span className="truncate">{dbLabel(d, all)}</span>
         </button>
       ))}
       {onCancel && <button type="button" onClick={onCancel} className="px-1 text-xs text-[var(--n-text-muted)] hover:underline">Cancelar</button>}

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { ColumnSchema } from "@/components/database/types";
 import { useFavorites } from "@/lib/hooks/useFavorites";
 import { CopyIdItem, fieldClass, menuItem } from "@/components/database/ui";
+import { PageIcon } from "@/components/PageIcon";
 
 /** Itens do menu "…" de uma página, usados na barra lateral e no topo da página. */
 export function PageMenu({ pageId, onClose, onRename }: { pageId: string; onClose: () => void; onRename: () => void }) {
@@ -85,7 +86,7 @@ export function PageMenu({ pageId, onClose, onRename }: { pageId: string; onClos
         <button type="button" className={menuItem} onClick={() => moveTo(null)}><FileText size={14} /> Raiz do workspace</button>
         {destinations.map((p) => (
           <button key={p.id} type="button" className={menuItem} onClick={() => moveTo(p.id)}>
-            <span className="w-4 shrink-0 text-center">{p.icon ?? <FileText size={14} />}</span>
+            <span className="w-4 shrink-0 text-center">{p.icon ? <PageIcon icon={p.icon} /> : <FileText size={14} />}</span>
             <span className="truncate">{p.title || "Sem título"}</span>
           </button>
         ))}

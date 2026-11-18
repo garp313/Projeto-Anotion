@@ -14,6 +14,7 @@ import { PageTree } from "./PageTree";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { Trash } from "./Trash";
 import dynamic from "next/dynamic";
+import { PageIcon } from "@/components/PageIcon";
 
 const ImportWizard = dynamic(() => import("@/components/import/ImportWizard").then((m) => m.ImportWizard), { ssr: false });
 
@@ -39,7 +40,7 @@ export function Sidebar() {
         {!list.length && <p className="px-2 text-xs text-[var(--n-text-faint)]">{empty}</p>}
         {list.map((p) => (
           <Link key={p.id} href={`/workspace/${p.id}`} className="flex h-[27px] items-center gap-1.5 rounded px-2 text-sm text-[var(--n-text-muted)] hover:bg-[var(--n-hover)] max-md:h-10">
-            <span className="grid w-5 shrink-0 place-items-center text-[15px]">{p.icon ?? <FileText size={15} />}</span>
+            <span className="grid w-5 shrink-0 place-items-center text-[15px]">{p.icon ? <PageIcon icon={p.icon} /> : <FileText size={15} />}</span>
             <span className="truncate">{p.title || "Sem título"}</span>
           </Link>
         ))}

@@ -21,6 +21,7 @@ import { DateText } from "./DatePicker";
 import { LinkSourceForm } from "./LinkSource";
 import { ConnectSourceItem, DashboardSummary, SourcesBar } from "./SourceFeed";
 import { nestedUnderSource } from "./sources";
+import { PageIcon } from "@/components/PageIcon";
 
 /** Bloco dentro de uma página: pode passar a mostrar outro banco (visão vinculada). */
 type Relink = { onRelink?: (db: string, view?: string) => void; linked?: boolean };
@@ -315,7 +316,7 @@ function NewMenu({ db, defaults, onCreated }: { db: Db; defaults: Record<string,
               const { id: _id, name: _name, ...init } = t;
               onCreated((await db.addRow({ ...init, row_properties: { ...init.row_properties, ...defaults } })).id);
             }}>
-            <span className="truncate">{t.icon} {t.name}</span>
+            <span className="truncate"><PageIcon icon={t.icon} /> {t.name}</span>
           </button>
           <button type="button" aria-label={db.defaultTemplateId === t.id ? `Deixar de usar ${t.name} como padrão` : `Usar ${t.name} como padrão`}
             title={db.defaultTemplateId === t.id ? "Padrão de toda Nova página. Clique para tirar." : "Usar como padrão em toda Nova página"}
@@ -459,7 +460,7 @@ export function DatabaseView({ databaseId, initialView, onRelink, linked }: { da
       {linked && (
         // Mesmos dados do banco de origem: o título com link evita achar que é uma cópia.
         <Link href={`/workspace/${db.id}`} className="mb-1 inline-flex items-center gap-1 text-sm font-semibold hover:underline">
-          <ArrowUpRight size={14} className="text-[var(--n-text-faint)]" /> {db.page?.icon} {db.page?.title || "Sem título"}
+          <ArrowUpRight size={14} className="text-[var(--n-text-faint)]" /> <PageIcon icon={db.page?.icon} /> {db.page?.title || "Sem título"}
         </Link>
       )}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--n-border)]">

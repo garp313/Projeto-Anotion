@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { fetchPage, usePageTree, type TreeNode } from "@/lib/hooks/usePageTree";
 import { Pop } from "@/components/database/ui";
 import { PageMenu } from "./PageMenu";
+import { PageIcon } from "@/components/PageIcon";
 
 const DATABASE_PREVIEW = 10;
 
@@ -149,7 +150,7 @@ export function PageItem({ node, depth, onCreate, onMove }: Props) {
           <Link href={`/workspace/${node.id}`} className="flex min-w-0 flex-1 items-center gap-1.5"
             onMouseEnter={() => void qc.prefetchQuery({ queryKey: ["page", node.id], queryFn: () => fetchPage(node.id), staleTime: Infinity })}>
             <span className="grid w-5 shrink-0 place-items-center text-[15px]">
-              {node.icon ?? <FileText size={16} className="text-[var(--n-text-muted)]" />}
+              {node.icon ? <PageIcon icon={node.icon} /> : <FileText size={16} className="text-[var(--n-text-muted)]" />}
             </span>
             <span className={`truncate ${node.title ? "" : "text-[var(--n-text-faint)]"}`}>
               {node.title || "Sem título"}

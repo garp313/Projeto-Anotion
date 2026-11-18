@@ -6,10 +6,24 @@ import { usePageTree, type PageFull, type PageRow } from "@/lib/hooks/usePageTre
 import { databasePatch } from "@/components/database/types";
 import { createClient } from "@/lib/supabase/client";
 import { CoverPicker } from "./CoverPicker";
+import { IconPicker, randomEmoji } from "./IconPicker";
+import { PageIcon } from "@/components/PageIcon";
+import { Pop } from "@/components/database/ui";
 
 const MAX_COVER = 5 * 1024 * 1024;
 
-const EMOJIS = ["📄","📝","📚","💡","🚀","🎯","✅","📅","🏠","💼","🧠","🔥","⭐","🎨","🛠️","📊","🌱","🎵","🍕","✈️","❤️","🔒","📌","🧪"];
+/** Ícone enviado: recortado no centro e reduzido para 256 px, para não carregar fotos enormes na barra lateral. GIF fica como está. */
+async function squareIcon(file: File): Promise<Blob> {
+  if (file.type === "image/gif") return file;
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height);
+  const size = Math.min(256, side);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  canvas.getContext("2d")!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+  bmp.close();
+  return await new Promise<Blob>((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error("canvas"))), "image/webp", 0.9));
+}
 
 export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWidth?: boolean }) {
   const { updatePage } = usePageTree();
@@ -19,6 +33,30 @@ export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWi
   // Fora do menu: abrir a janela de arquivos pode fechar o menu, e o campo sumiria junto com o arquivo.
   const coverFile = useRef<HTMLInputElement>(null);
   const [coverState, setCoverState] = useState<string | null>(null);
+  const iconFile = useRef<HTMLInputElement>(null);
+  const [iconState, setIconState] = useState<string | null>(null);
+  const [iconOpen, setIconOpen] = useState(false);
+
+  async function uploadIcon(file?: File) {
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return setIconState("Use uma imagem PNG, JPG, WEBP ou GIF.");
+    if (file.size > MAX_COVER) return setIconState("A imagem precisa ter até 5 MB.");
+    setIconState("Enviando imagem…");
+    try {
+      const blob = await squareIcon(file);
+      const type = blob.type || file.type;
+      const supabase = createClient();
+      const { data } = await supabase.auth.getSession();
+      const path = `${data.session?.user.id}/icons/${crypto.randomUUID()}.${type.split("/")[1]}`;
+      const { error } = await supabase.storage.from("covers").upload(path, blob, { contentType: type });
+      if (error) throw error;
+      patch({ icon: supabase.storage.from("covers").getPublicUrl(path).data.publicUrl });
+      setIconState(null);
+      setIconOpen(false);
+    } catch {
+      setIconState("Não foi possível enviar a imagem.");
+    }
+  }
 
   async function uploadCover(file?: File) {
     if (!file) return;
@@ -54,6 +92,8 @@ export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWi
     <header className="group/header">
       <input ref={coverFile} type="file" hidden aria-label="Imagem de capa" accept="image/png,image/jpeg,image/webp,image/gif"
         onChange={(e) => { void uploadCover(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={iconFile} type="file" hidden aria-label="Imagem do ícone" accept="image/png,image/jpeg,image/webp,image/gif"
+        onChange={(e) => { setIconOpen(true); void uploadIcon(e.target.files?.[0]); e.target.value = ""; }} />
       {page.cover ? (
         <div className="group/cover relative h-[30vh] min-h-[160px] w-full" style={{ background: page.cover }}>
           <Popover.Root>
@@ -72,23 +112,20 @@ export function PageHeader({ page, fullWidth = false }: { page: PageFull; fullWi
       <div className={fullWidth ? "w-full px-4 sm:px-12" : "mx-auto w-full max-w-[960px] px-4 sm:px-12"}>
         <div className={`relative ${page.cover ? "-mt-9" : ""}`}>
           {page.icon && (
-            <Popover.Root>
-              <Popover.Trigger aria-label="Trocar ícone" className={`rounded p-1 leading-none hover:bg-[var(--n-hover)] ${compact ? "text-[32px]" : "text-[56px] sm:text-[72px]"}`}>{page.icon}</Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content align="start" className={`${menu} w-[280px] p-2`}>
-                  <div className="grid grid-cols-8 gap-1">
-                    {EMOJIS.map((e) => <Popover.Item key={e} onSelect={() => patch({ icon: e })} className="grid h-8 w-8 cursor-pointer place-items-center rounded text-xl outline-none data-[highlighted]:bg-[var(--n-hover)]">{e}</Popover.Item>)}
-                  </div>
-                  <Popover.Item onSelect={() => patch({ icon: null })} className="mt-2 cursor-pointer rounded px-2 py-1 text-sm outline-none data-[highlighted]:bg-[var(--n-hover)]">Remover</Popover.Item>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
+            <Pop open={iconOpen} onOpenChange={(o) => { setIconOpen(o); if (!o) setIconState(null); }} width={320}
+              triggerClass={`rounded p-1 leading-none hover:bg-[var(--n-hover)] ${compact ? "text-[32px]" : "text-[56px] sm:text-[72px]"}`}
+              trigger={<span aria-label="Trocar ícone" className="block"><PageIcon icon={page.icon} /></span>}>
+              <IconPicker status={iconState}
+                onPick={(icon) => { patch({ icon }); setIconOpen(false); }}
+                onRemove={() => { patch({ icon: null }); setIconOpen(false); }}
+                onUpload={() => iconFile.current?.click()} />
+            </Pop>
           )}
 
           {coverState && <p role="status" className="mt-2 text-xs text-[var(--n-text-muted)]">{coverState}</p>}
           {/* só aparecem ao passar o mouse */}
           <div className="mb-1 mt-2 flex gap-1 opacity-0 transition-opacity group-hover/header:opacity-100 focus-within:opacity-100">
-            {!page.icon && <button className={ghost} onClick={() => patch({ icon: EMOJIS[Math.floor(Math.random() * EMOJIS.length)] })}><Smile size={14} /> Adicionar ícone</button>}
+            {!page.icon && <button className={ghost} onClick={() => patch({ icon: randomEmoji() })}><Smile size={14} /> Adicionar ícone</button>}
             {!page.cover && (
               <Popover.Root>
                 <Popover.Trigger className={ghost}><ImagePlus size={14} /> Adicionar capa</Popover.Trigger>

@@ -8,6 +8,7 @@ import type { Db } from "./useDatabase";
 import { MirrorNote, PropertyPreview, PropertyValue } from "./cells";
 import { AddPropertyMenu, PropertyMenu } from "./PropertyMenu";
 import { Choice, CopyIdItem, OptionTag, Pop, PropIcon, menuItem } from "./ui";
+import { PageIcon, iconText } from "@/components/PageIcon";
 
 export type ViewProps = {
   db: Db;
@@ -281,7 +282,7 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
                     className={`min-w-0 shrink-0 border-r border-[var(--n-border)] ${c.type === "title" ? "sticky left-12 z-10 bg-[var(--n-bg)]" : "relative"} ${view.wrap ? "" : "max-h-[60px] overflow-hidden"}`}>
                     {c.type === "title" ? (
                       <div className="flex items-center">
-                        {row.icon && <span className="pl-2 text-sm">{row.icon}</span>}
+                        {row.icon && <span className="pl-2 text-sm"><PageIcon icon={row.icon} /></span>}
                         <PropertyValue col={c} row={row} db={db} autoFocus={row.id === fresh} dense={!view.wrap} />
                         <span className="mr-1 flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100">
                           <button type="button" onClick={() => open(row.id)}
@@ -324,7 +325,7 @@ function Card({ row, db, cols, open, draggable, onDragStart }: {
   return (
     <button type="button" draggable={draggable} onDragStart={onDragStart} onClick={() => open(row.id)}
       className="block w-full overflow-hidden rounded-md border border-[var(--n-border)] bg-[var(--n-bg)] p-2 text-left shadow-sm hover:bg-[var(--n-hover)]">
-      <span title={titleOf(row)} className="block truncate text-sm font-medium">{row.icon} {titleOf(row)}</span>
+      <span title={titleOf(row)} className="block truncate text-sm font-medium"><PageIcon icon={row.icon} /> {titleOf(row)}</span>
       {shown.length > 0 && (
         <span className="mt-1 flex min-w-0 flex-col items-start gap-1">
           {shown.map((c) => <PropertyPreview key={c.id} col={c} row={row} db={db} />)}
@@ -410,7 +411,7 @@ export function ListView({ db, view, rows, open, defaults }: ViewProps) {
           {gcol && <p className="mt-3 px-2 text-xs font-medium text-[var(--n-text-muted)]">{g.label} · {g.rows.length}</p>}
           {g.rows.map((r) => (
             <div key={r.id} className="group flex items-center gap-3 rounded px-2 py-1 hover:bg-[var(--n-hover)]">
-              <button type="button" onClick={() => open(r.id)} className="min-w-0 flex-1 truncate text-left text-sm">{r.icon ?? "📄"} {titleOf(r)}</button>
+              <button type="button" onClick={() => open(r.id)} className="min-w-0 flex-1 truncate text-left text-sm">{r.icon ? <PageIcon icon={r.icon} /> : "📄"} {titleOf(r)}</button>
               <MirrorNote row={r} />
               <span className="flex min-w-0 items-center gap-3">
                 {cols.map((c) => <PropertyPreview key={c.id} col={c} row={r} db={db} />)}
@@ -443,7 +444,7 @@ export function GalleryView({ db, view, rows, open, defaults }: ViewProps) {
           className="overflow-hidden rounded-lg border border-[var(--n-border)] text-left shadow-sm hover:bg-[var(--n-hover)]">
           <span className="block h-28 bg-[var(--n-callout)]" style={r.cover ? { background: r.cover } : undefined} />
           <span className="block p-2">
-            <span className="block truncate text-sm font-medium">{r.icon} {titleOf(r)}</span>
+            <span className="block truncate text-sm font-medium"><PageIcon icon={r.icon} /> {titleOf(r)}</span>
             <span className="mt-1 flex flex-col items-start gap-1">
               {cols.map((c) => <PropertyPreview key={c.id} col={c} row={r} db={db} />)}
               <MirrorNote row={r} full />
@@ -578,7 +579,7 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
   const shift = (n: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1));
   // Itens arrastáveis: o clique (ou toque) abre; Enter pelo teclado também.
   const item = (r: DatabaseRow) => ({
-    onPointerDown: (e: React.PointerEvent) => start(e, r.id, `${r.icon ?? ""} ${titleOf(r)}`.trim()),
+    onPointerDown: (e: React.PointerEvent) => start(e, r.id, `${iconText(r.icon)} ${titleOf(r)}`.trim()),
     onClick: (e: React.MouseEvent) => { if (e.detail === 0) open(r.id); },
     // Segurar no toque abre o menu do navegador, que cancelaria o arrasto.
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
@@ -614,7 +615,7 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
                   ? <QuickTitle key={r.id} row={r} db={db} onDone={() => setFresh(null)} className="mt-0.5 text-xs" />
                   : <button key={r.id} type="button" {...item(r)}
                       className={`${chip} mt-0.5 block w-full truncate rounded border bg-[var(--n-bg)] px-1 py-0.5 text-left text-xs shadow-sm hover:bg-[var(--n-hover)] ${drag?.id === r.id ? "opacity-40" : ""} ${isDone(r, db.schema) ? "border-[var(--n-border)] text-[var(--n-text-faint)] line-through" : /red/.test(dueTone(col, r, db.ctx)) ? "border-red-500/60" : "border-[var(--n-border)]"}`}>
-                      {r.icon} {titleOf(r)}
+                      <PageIcon icon={r.icon} /> {titleOf(r)}
                     </button>
               ))}
               {(byDay.get(k)?.length ?? 0) > CALENDAR_LIMIT && !opened.includes(k) && (
@@ -639,7 +640,7 @@ export function CalendarView({ db, view, rows, open, defaults }: ViewProps) {
             {undated.slice(0, allUndated ? undefined : UNDATED_SHOWN).map((r) => (
               <button key={r.id} type="button" {...item(r)}
                 className={`${chip} block w-full truncate rounded border border-[var(--n-border)] bg-[var(--n-bg)] px-1.5 py-1 text-left text-xs shadow-sm hover:bg-[var(--n-hover)] ${drag?.id === r.id ? "opacity-40" : ""}`}>
-                {r.icon} {titleOf(r)}
+                <PageIcon icon={r.icon} /> {titleOf(r)}
               </button>
             ))}
             {undated.length > UNDATED_SHOWN && !allUndated && (
@@ -733,7 +734,7 @@ export function TimelineView({ db, view, rows, open, defaults }: ViewProps) {
                   <button type="button" onPointerDown={(ev) => startDrag(ev, r)} title={titleOf(r)}
                     style={{ left: s * DAY_W + off, width: (e - s + 1) * DAY_W }}
                     className="absolute top-1 h-6 cursor-grab touch-none truncate rounded border border-[var(--n-border)] bg-[var(--n-callout)] px-1.5 text-left text-xs shadow-sm hover:brightness-95">
-                    {r.icon} {titleOf(r)}
+                    <PageIcon icon={r.icon} /> {titleOf(r)}
                   </button>
                 </div>
               );

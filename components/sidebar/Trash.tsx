@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Database, FileText, RotateCcw, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Pop, fieldClass } from "@/components/database/ui";
+import { PageIcon } from "@/components/PageIcon";
 
 type Archived = { id: string; parent_id: string | null; title: string; icon: string | null; is_database: boolean; updated_at: string };
 type Listed = { id: string; title: string };
@@ -99,7 +100,7 @@ export function Trash({ triggerClass }: { triggerClass: string }) {
         : !shown.length ? <p className="p-4 text-center text-xs text-[var(--n-text-faint)]">Nada encontrado para “{q.trim()}”.</p>
         : <div className="n-scroll max-h-[360px] overflow-y-auto">{shown.map((p) => (
           <div key={p.id} className="flex items-center gap-1 rounded px-2 py-1 hover:bg-[var(--n-hover)]">
-            <span className="grid w-5 shrink-0 place-items-center">{p.icon ?? (p.is_database ? <Database size={14} className="text-[var(--n-text-faint)]" /> : <FileText size={14} className="text-[var(--n-text-faint)]" />)}</span>
+            <span className="grid w-5 shrink-0 place-items-center">{p.icon ? <PageIcon icon={p.icon} /> : (p.is_database ? <Database size={14} className="text-[var(--n-text-faint)]" /> : <FileText size={14} className="text-[var(--n-text-faint)]" />)}</span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm">{p.title || "Sem título"}</span>
               <span className="block truncate text-[11px] text-[var(--n-text-faint)]">{origin(p)} · excluída em {when(p.updated_at)}</span>

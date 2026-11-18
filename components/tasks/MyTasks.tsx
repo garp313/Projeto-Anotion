@@ -11,6 +11,7 @@ import { Choice, OptionTag, Pop, menuItem } from "@/components/database/ui";
 import { isAssignedTo } from "@/lib/assignee";
 import { useMembers } from "@/lib/collab";
 import { dueDay, formatDateValue } from "@/components/database/values";
+import { PageIcon } from "@/components/PageIcon";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -192,7 +193,7 @@ export function MyTasks() {
                     <Check size={11} className="opacity-0 group-hover:opacity-100" />
                   </button>
                 )}
-                <Link href={`/workspace/${t.id}`} className="min-w-0 flex-1 truncate text-sm">{t.icon} {t.title || "Sem título"}</Link>
+                <Link href={`/workspace/${t.id}`} className="min-w-0 flex-1 truncate text-sm"><PageIcon icon={t.icon} /> {t.title || "Sem título"}</Link>
                 <span className="hidden max-w-[120px] shrink-0 truncate text-xs text-[var(--n-text-faint)] sm:inline" title={t.projects[0] ?? t.databaseTitle}>{t.projects[0] ?? t.databaseTitle}</span>
                 {t.priority && <OptionTag option={t.priority} />}
                 <StatusPicker task={t} onPick={(id) => changeStatus.mutate({ task: t, id })} />
@@ -212,7 +213,7 @@ export function MyTasks() {
                   className="grid h-4 w-4 shrink-0 place-items-center rounded border border-[var(--n-accent)] bg-[var(--n-accent)] text-white">
                   <Check size={11} />
                 </button>
-                <Link href={`/workspace/${t.id}`} className="min-w-0 flex-1 truncate text-sm text-[var(--n-text-faint)] line-through">{t.icon} {t.title || "Sem título"}</Link>
+                <Link href={`/workspace/${t.id}`} className="min-w-0 flex-1 truncate text-sm text-[var(--n-text-faint)] line-through"><PageIcon icon={t.icon} /> {t.title || "Sem título"}</Link>
                 <span className="hidden max-w-[120px] shrink-0 truncate text-xs text-[var(--n-text-faint)] sm:inline" title={t.databaseTitle}>{t.databaseTitle}</span>
               </div>
             ))}

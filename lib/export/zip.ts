@@ -5,6 +5,7 @@ import type { ColumnSchema, DatabaseRow } from "@/components/database/types";
 import { DEFAULT_SCHEMA } from "@/components/database/types";
 import { toCsv } from "@/components/database/csv";
 import { displayText, rawValue, type Ctx } from "@/components/database/values";
+import { iconText } from "@/components/PageIcon";
 
 type Page = {
   id: string; parent_id: string | null; title: string; icon: string | null; is_database: boolean; position: number;
@@ -71,7 +72,7 @@ export async function exportZip(rootId: string) {
   const zip = new JSZip();
 
   const writeMd = (p: Page, dir: string, header: string[] = []) => {
-    const title = `# ${p.icon ? `${p.icon} ` : ""}${p.title || "Sem título"}`;
+    const title = `# ${iconText(p.icon) ? `${iconText(p.icon)} ` : ""}${p.title || "Sem título"}`;
     const body = toMarkdown(p.content_json ?? []);
     zip.file(`${dir}${entry(p)}.md`, [title, ...(header.length ? [header.join("\n")] : []), body].filter(Boolean).join("\n\n"));
   };

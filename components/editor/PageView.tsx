@@ -22,6 +22,7 @@ import { PageActivity } from "@/components/collab/PageActivity";
 import { ShareMenu } from "@/components/collab/ShareMenu";
 import { ScheduleEmail } from "@/components/collab/ScheduleEmail";
 import { VersionsMenu } from "@/components/collab/VersionsMenu";
+import { PageIcon } from "@/components/PageIcon";
 
 // Editor e banco de dados são os trechos mais pesados: cada página baixa só o que usa.
 const skeleton = () => <div className="h-40 animate-pulse rounded bg-[var(--n-hover)]/40" />;
@@ -79,11 +80,11 @@ export function PageView({ pageId }: { pageId: string }) {
         <nav aria-label="Caminho da página" className="flex min-w-0 flex-1 items-center gap-1 text-sm text-[var(--n-text-muted)]">
           {trail.map((p) => (
             <span key={p.id} className="flex min-w-0 items-center gap-1">
-              <Link href={`/workspace/${p.id}`} className="truncate rounded px-1 hover:bg-[var(--n-hover)]">{p.icon} {p.title || "Sem título"}</Link>
+              <Link href={`/workspace/${p.id}`} className="truncate rounded px-1 hover:bg-[var(--n-hover)]"><PageIcon icon={p.icon} /> {p.title || "Sem título"}</Link>
               <span className="text-[var(--n-text-faint)]">/</span>
             </span>
           ))}
-          <span aria-current="page" className="truncate px-1 text-[var(--n-text)]">{page.icon} {page.title || "Sem título"}</span>
+          <span aria-current="page" className="truncate px-1 text-[var(--n-text)]"><PageIcon icon={page.icon} /> {page.title || "Sem título"}</span>
         </nav>
         <ShareMenu pageId={page.id} workspaceId={page.workspace_id} />
         <ScheduleEmail pageId={page.id} title={page.title} />

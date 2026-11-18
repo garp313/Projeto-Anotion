@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, CornerDownLeft, FileText, Search, X } from "lucide-react";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { fold, loadEventIndex, loadPageIndex, snippet, type EventHit, type PageHit } from "./searchIndex";
+import { PageIcon } from "@/components/PageIcon";
 
 type Result =
   | { kind: "page"; hit: PageHit; detail?: string }
@@ -122,7 +123,7 @@ export function SearchModal() {
                 <span className="grid h-6 w-6 shrink-0 place-items-center text-lg">
                   {r.kind === "event"
                     ? <CalendarDays size={16} className="text-[var(--n-text-faint)]" />
-                    : r.hit.icon ?? <FileText size={16} className="text-[var(--n-text-faint)]" />}
+                    : r.hit.icon ? <PageIcon icon={r.hit.icon} /> : <FileText size={16} className="text-[var(--n-text-faint)]" />}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{r.hit.title || "Sem título"}</span>

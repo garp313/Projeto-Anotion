@@ -13,6 +13,7 @@ import { useAutoSave, type SaveStatus } from "@/lib/hooks/useAutoSave";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_SCHEMA } from "@/components/database/types";
 import type { PageRow } from "@/lib/hooks/usePageTree";
+import { PageIcon } from "@/components/PageIcon";
 
 /** A seção "Subtítulos" do pacote reúne títulos menores e expansíveis: o nome confundia. */
 const slashMenu = Object.fromEntries(Object.entries(pt.slash_menu).map(([key, item]: [string, any]) =>
@@ -142,7 +143,7 @@ export function BlockEditor({ pageId, initialContent, onStatus }: Props) {
       ];
       const people = found.map((p) => ({ title: p.label, group: "Pessoas", icon: <User size={16} />, onItemClick: mention("person", p.label, p.id) }));
       const pages = (qc.getQueryData<PageRow[]>(["pages"]) ?? []).filter((p) => p.id !== pageId && p.title).map((p) => ({
-        title: p.title, group: "Páginas", icon: p.icon ? <span>{p.icon}</span> : <FileText size={16} />, onItemClick: mention("page", p.title, p.id),
+        title: p.title, group: "Páginas", icon: p.icon ? <PageIcon icon={p.icon} /> : <FileText size={16} />, onItemClick: mention("page", p.title, p.id),
       }));
       const day = (offset: number) => { const d = new Date(); d.setDate(d.getDate() + offset); return d; };
       const dates = ([["Hoje", 0], ["Amanhã", 1], ["Próxima semana", 7]] as const).map(([title, offset]) => {
