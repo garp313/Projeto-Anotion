@@ -1,20 +1,24 @@
 "use client";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { defaultView, type ColumnSchema } from "./types";
+import { defaultView, type ColumnSchema, type DatabaseViewConfig } from "./types";
 import { useDatabase, type Db } from "./useDatabase";
 import { TableView } from "./views";
 
-function Linked({ col, rowId }: { col: ColumnSchema; rowId: string }) {
+function Linked({ col, rowId, saved, onSave }: { col: ColumnSchema; rowId: string; saved?: DatabaseViewConfig; onSave: (v: DatabaseViewConfig) => Promise<void> }) {
   const router = useRouter();
   const target = useDatabase(col.relationDatabaseId!);
   const mirror = col.relationSyncProp!;
   const rows = useMemo(() => target.rows.filter((r) => (r.row_properties?.[mirror] ?? []).includes(rowId)), [target.rows, mirror, rowId]);
-  const view = useMemo(() => ({ ...defaultView("table", target.schema), hidden: [mirror] }), [target.schema, mirror]);
+  // A arrumação (ordem e largura das colunas, cálculos) fica salva no banco de projetos: vale para todos os projetos.
+  const view = useMemo(() => {
+    const base = saved ?? defaultView("table", target.schema);
+    return { ...base, type: "table" as const, hidden: [...new Set([...(base.hidden ?? []), mirror])] };
+  }, [saved, target.schema, mirror]);
   // A tarefa nova nasce ligada a este projeto, passando pela sincronização da relação.
   const db = {
     ...target,
-    saveView: async () => {},
+    saveView: (v: DatabaseViewConfig) => onSave(v),
     addRow: async (init?: Parameters<Db["addRow"]>[0]) => {
       const row = await target.addRow(init);
       target.setValue(row.id, mirror, [rowId]);
@@ -31,7 +35,8 @@ function Linked({ col, rowId }: { col: ColumnSchema; rowId: string }) {
 
 /** Lista na página do projeto as tarefas do banco Tarefas: é a mesma fonte dos números do rollup. */
 export function RelatedPanel({ databaseId, rowId }: { databaseId: string; rowId: string }) {
-  const { schema } = useDatabase(databaseId);
+  const { schema, page, patchProp } = useDatabase(databaseId);
   const col = schema.find((c) => c.type === "relation" && c.relationDatabaseId && c.relationSyncProp && schema.some((s) => s.rollup?.relationProp === c.id));
-  return col ? <Linked col={col} rowId={rowId} /> : null;
+  const views: Record<string, DatabaseViewConfig> = page?.row_properties?.__relatedViews ?? {};
+  return col ? <Linked col={col} rowId={rowId} saved={views[col.id]} onSave={(v) => patchProp("__relatedViews", { ...views, [col.id]: v })} /> : null;
 }

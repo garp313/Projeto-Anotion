@@ -222,8 +222,10 @@ export function TableView({ db, view, rows, open, defaults }: ViewProps) {
     save.current = setTimeout(() => void db.saveView({ ...view, widths: { ...view.widths, ...widths, [id]: w } }), 400);
   };
   const reorder = (from: string, to: string) => {
-    const ids = cols.map((c) => c.id).filter((i) => i !== from);
-    ids.splice(ids.indexOf(to), 0, from);
+    const all = cols.map((c) => c.id);
+    const ids = all.filter((i) => i !== from);
+    // Arrastando para a direita, entra depois do alvo; para a esquerda, antes. Assim dá para trocar com a vizinha dos dois lados.
+    ids.splice(ids.indexOf(to) + (all.indexOf(from) < all.indexOf(to) ? 1 : 0), 0, from);
     void db.saveView({ ...view, order: ids });
   };
   /** Solta a linha acima de `target` usando a média das posições vizinhas. */

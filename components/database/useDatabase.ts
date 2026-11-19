@@ -447,7 +447,7 @@ export function useDatabase(databaseId: string) {
     setShowNested: (v: boolean) => patchProp("__showNested", v),
     isLoading: rowsQuery.isLoading || page.isLoading,
     error: rowsQuery.error ?? page.error,
-    saveSchema, saveColumn, addColumn, removeColumn, linkRelation, linkRollup, unlinkMirror, addSelfRelation, createRelated, setViews, saveView,
+    saveSchema, saveColumn, addColumn, removeColumn, linkRelation, linkRollup, unlinkMirror, addSelfRelation, createRelated, setViews, saveView, patchProp,
     templates, setTemplates, saveTemplate, setCalendarSync, defaultTemplateId, setDefaultTemplate,
     addRow: (init?: NewRow) => addRow.mutateAsync(init ?? {}),
     setValue: (rowId: string, colId: string, value: any) => {
