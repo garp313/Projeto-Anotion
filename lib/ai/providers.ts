@@ -139,15 +139,29 @@ export function ask(provider: Provider, key: string, model: string, system: stri
   return provider === "claude" ? claude(key, model, system, messages, tools) : gemini(key, model, system, messages, tools);
 }
 
-/** Confere a chave sem gastar: só lista os modelos. */
-export async function checkKey(provider: Provider, key: string): Promise<boolean> {
+/**
+ * Confere a chave sem gastar e lista os modelos que ela pode usar para conversar.
+ * null: chave recusada. Lista vazia: o provedor não informou, então o modelo não é conferido.
+ */
+export async function listModels(provider: Provider, key: string): Promise<string[] | null> {
   const res = await fetch(
-    provider === "claude" ? "https://api.anthropic.com/v1/models?limit=1" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+    provider === "claude" ? "https://api.anthropic.com/v1/models?limit=1000" : "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
     {
       cache: "no-store", signal: AbortSignal.timeout(15_000),
       headers: provider === "claude" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { "x-goog-api-key": key },
     },
   ).catch(() => null);
   if (!res) throw new ProviderError("Não foi possível falar com o provedor agora. Tente de novo.", 504);
-  return res.ok;
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => ({}));
+  if (provider === "claude") return (data?.data ?? []).map((m: any) => String(m?.id ?? "")).filter(Boolean);
+  return (data?.models ?? [])
+    .filter((m: any) => !Array.isArray(m?.supportedGenerationMethods) || m.supportedGenerationMethods.includes("generateContent"))
+    .map((m: any) => String(m?.name ?? "").replace(/^models\//, "")).filter(Boolean);
+}
+
+/** Os nomes mais úteis para sugerir quando o modelo digitado não existe. */
+export function suggestModels(provider: Provider, models: string[]) {
+  const pref = provider === "claude" ? /sonnet|haiku/ : /flash/;
+  return [...models.filter((m) => pref.test(m) && !/image|tts|audio|live|embedding/.test(m)), ...models].filter((m, i, a) => a.indexOf(m) === i).slice(0, 5);
 }
