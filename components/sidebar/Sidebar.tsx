@@ -2,11 +2,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, CalendarDays, ChevronsLeft, FileText, ListChecks, Menu, Plus, Search, Upload } from "lucide-react";
+import { Bell, CalendarDays, ChevronsLeft, FileText, ListChecks, Menu, Plus, Search, Sparkles, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { connectGoogle, useGoogleStatus, useUnreadCount } from "@/lib/collab";
 import { useSidebar } from "@/lib/store/sidebar";
+import { useAssistant } from "@/lib/store/assistant";
 import { useEmptyPageCleanup } from "@/lib/hooks/useEmptyPageCleanup";
 import { useFavorites, useRecents } from "@/lib/hooks/useFavorites";
 import { usePageTree } from "@/lib/hooks/usePageTree";
@@ -20,6 +21,7 @@ const ImportWizard = dynamic(() => import("@/components/import/ImportWizard").th
 
 export function Sidebar() {
   const { collapsed: savedCollapsed, width, toggle: toggleSaved, setWidth } = useSidebar();
+  const { open: assistantOpen, toggle: toggleAssistant } = useAssistant();
   const { tree, pages, workspace, createPage, movePage } = usePageTree();
   const { favorites } = useFavorites();
   const recents = useRecents();
@@ -119,6 +121,7 @@ export function Sidebar() {
             </Link>
             <Link href="/tarefas" className={row}><ListChecks size={16} /> Minhas tarefas</Link>
             <Link href="/agenda" className={row}><CalendarDays size={16} /> Agenda</Link>
+            <button className={row} aria-pressed={assistantOpen} onClick={toggleAssistant}><Sparkles size={16} /> Assistente IA</button>
           </div>
 
           <div className="n-scroll flex-1 overflow-y-auto px-1.5 pb-2">

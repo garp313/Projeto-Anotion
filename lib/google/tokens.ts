@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-function key() {
+export function key() {
   const raw = process.env.TOKEN_ENC_KEY;
   const k = raw ? Buffer.from(raw, "base64") : null;
   return k?.length === 32 ? k : null;
