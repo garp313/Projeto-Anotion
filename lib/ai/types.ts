@@ -13,13 +13,15 @@ export type ToolCall = {
   args: Record<string, any>;
   /** Assinatura opaca do Gemini: precisa voltar junto com a chamada. */
   sig?: string;
+  /** O id veio do Gemini: a resposta da ferramenta repete o id. */
+  native?: boolean;
 };
 
 export type ToolResult = { id: string; name: string; output: string };
 
 export type ChatMsg =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; calls?: ToolCall[] }
+  | { role: "assistant"; text: string; calls?: ToolCall[]; raw?: any[] }
   | { role: "tool"; results: ToolResult[] };
 
 export type KeyStatus = { model: string; hint: string } | null;

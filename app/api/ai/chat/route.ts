@@ -23,8 +23,9 @@ function clean(raw: unknown): ChatMsg[] | null {
     if (m.role === "user") out.push({ role: "user", text: str(m.text, 20_000) });
     else if (m.role === "assistant") {
       const calls: ToolCall[] = (Array.isArray(m.calls) ? m.calls : []).filter((c: any) => isObj(c) && NAMES.has(c.name) && typeof c.id === "string")
-        .map((c: any) => ({ id: str(c.id, 200), name: c.name, args: isObj(c.args) ? c.args : {}, ...(typeof c.sig === "string" ? { sig: c.sig } : {}) }));
-      out.push({ role: "assistant", text: str(m.text, 50_000), ...(calls.length ? { calls } : {}) });
+        .map((c: any) => ({ id: str(c.id, 200), name: c.name, args: isObj(c.args) ? c.args : {}, ...(typeof c.sig === "string" ? { sig: c.sig } : {}), ...(c.native === true ? { native: true } : {}) }));
+      const raw = Array.isArray(m.raw) && JSON.stringify(m.raw).length < 200_000 ? m.raw : undefined;
+      out.push({ role: "assistant", text: str(m.text, 50_000), ...(calls.length ? { calls } : {}), ...(raw ? { raw } : {}) });
     } else if (m.role === "tool") {
       const results: ToolResult[] = (Array.isArray(m.results) ? m.results : []).filter(isObj)
         .map((r: any) => ({ id: str(r.id, 200), name: str(r.name, 64), output: str(r.output, 20_000) }));
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
     const system = await systemPrompt(sb, user, pageId);
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const reply = await ask(provider, key.apiKey, key.model, system, windowOf(messages), TOOLS);
-      messages.push({ role: "assistant", text: reply.text, ...(reply.calls.length ? { calls: reply.calls } : {}) });
+      messages.push({ role: "assistant", text: reply.text, ...(reply.calls.length ? { calls: reply.calls } : {}), ...(reply.raw ? { raw: reply.raw } : {}) });
       if (!reply.calls.length) return respond(null);
       if (reply.calls.some((c) => WRITE_TOOLS.has(c.name))) {
         return respond(await Promise.all(reply.calls.filter((c) => WRITE_TOOLS.has(c.name)).map((c) => summarize(sb, c))));

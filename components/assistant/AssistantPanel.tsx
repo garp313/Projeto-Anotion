@@ -11,7 +11,8 @@ import { DEFAULT_MODEL, PROVIDER_LABEL, READ_LABEL, type ChatMsg, type ChatRespo
 
 const CHAT_KEY = "anotion:ai-chat";
 const PROVIDER_KEY = "anotion:ai-provider";
-const PROVIDERS: Provider[] = ["claude", "gemini"];
+// O Gemini vem primeiro: tem faixa gratuita.
+const PROVIDERS: Provider[] = ["gemini", "claude"];
 const KEY_LINK: Record<Provider, { href: string; label: string }> = {
   claude: { href: "https://console.anthropic.com/settings/keys", label: "console.anthropic.com" },
   gemini: { href: "https://aistudio.google.com/apikey", label: "aistudio.google.com" },
@@ -123,7 +124,7 @@ export function AssistantPanel() {
   const qc = useQueryClient();
   const pathname = usePathname();
   const pageId = /^\/workspace\/([0-9a-f-]{36})/.exec(pathname ?? "")?.[1] ?? null;
-  const [provider, setProvider] = useState<Provider>("claude");
+  const [provider, setProvider] = useState<Provider>("gemini");
   const [chat, setChat] = useState<Saved>({ messages: [], pending: null });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);

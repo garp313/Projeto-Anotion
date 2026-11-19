@@ -3,7 +3,8 @@ import { randomUUID } from "crypto";
 import type { ToolDef } from "./tools";
 import type { ChatMsg, Provider, ToolCall } from "./types";
 
-export type Reply = { text: string; calls: ToolCall[] };
+/** `raw`: partes do Gemini como vieram. Ele exige recebê-las de volta sem mudança (assinaturas). */
+export type Reply = { text: string; calls: ToolCall[]; raw?: any[] };
 
 /** Erro que pode ser mostrado a quem usa. */
 export class ProviderError extends Error {
@@ -87,7 +88,8 @@ function geminiSchema(s: any): any {
 }
 
 function toGemini(messages: ChatMsg[]) {
-  const names = new Map<string, string>();
+  const calls = new Map<string, ToolCall>();
+  for (const m of messages) if (m.role === "assistant") for (const c of m.calls ?? []) calls.set(c.id, c);
   return merge(messages.map((m) => {
     if (m.role === "user") return { role: "user", parts: [{ text: m.text }] };
     if (m.role === "tool") {
@@ -96,14 +98,15 @@ function toGemini(messages: ChatMsg[]) {
         parts: m.results.map((r) => {
           let response: unknown;
           try { response = JSON.parse(r.output); } catch { response = r.output; }
-          return { functionResponse: { name: names.get(r.id) ?? r.name, response: { resultado: response } } };
+          const call = calls.get(r.id);
+          return { functionResponse: { ...(call?.native ? { id: r.id } : {}), name: call?.name ?? r.name, response: { resultado: response } } };
         }),
       };
     }
+    if (m.raw?.length) return { role: "model", parts: m.raw };
     const parts: any[] = [];
     if (m.text) parts.push({ text: m.text });
     for (const c of m.calls ?? []) {
-      names.set(c.id, c.name);
       parts.push({ functionCall: { name: c.name, args: c.args ?? {} }, ...(c.sig ? { thoughtSignature: c.sig } : {}) });
     }
     return { role: "model", parts: parts.length ? parts : [{ text: "…" }] };
@@ -125,8 +128,10 @@ async function gemini(key: string, model: string, system: string, messages: Chat
     text: parts.filter((p) => typeof p.text === "string" && !p.thought).map((p) => p.text).join("").trim(),
     calls: parts.filter((p) => p.functionCall).map((p) => ({
       id: p.functionCall.id ?? randomUUID(), name: p.functionCall.name, args: p.functionCall.args ?? {},
+      ...(p.functionCall.id ? { native: true } : {}),
       ...(p.thoughtSignature ? { sig: p.thoughtSignature } : {}),
     })),
+    ...(parts.length ? { raw: parts } : {}),
   };
 }
 
