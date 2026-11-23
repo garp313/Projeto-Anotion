@@ -43,6 +43,7 @@ function windowOf(messages: ChatMsg[]) {
 }
 
 export async function POST(req: Request) {
+  const started = Date.now();
   const sb = await createClient();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
   const key = await loadKey(sb, provider);
   if (!key) return NextResponse.json({ error: `Conecte a sua chave do ${PROVIDER_LABEL[provider]} nas configurações do assistente.` }, { status: 400 });
 
+  const until = started + 55_000;
   let changed = false;
   let switched: string | undefined;
   const dated: string[] = [];
@@ -87,7 +89,9 @@ export async function POST(req: Request) {
   try {
     const system = await systemPrompt(sb, user, pageId);
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      const reply = await ask(provider, key.apiKey, key.model, system, windowOf(messages), TOOLS);
+      // Perto do limite da Vercel: para aqui e guarda o que já foi feito.
+      if (round > 0 && until - Date.now() < 12_000) break;
+      const reply = await ask(provider, key.apiKey, key.model, system, windowOf(messages), TOOLS, until);
       if (reply.model && reply.model !== key.model) {
         // Modelo desativado: guarda o substituto para as próximas conversas.
         key.model = switched = reply.model;

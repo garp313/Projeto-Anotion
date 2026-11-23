@@ -13,18 +13,26 @@ export class ProviderError extends Error {
   constructor(message: string, public status = 502) { super(message); }
 }
 
-const TIMEOUT = 50_000;
+const tooSlow = () => new ProviderError("A IA demorou demais para responder. Tente de novo.", 504);
 
-async function post(url: string, headers: Record<string, string>, body: unknown, provider: Provider) {
+/** `until`: prazo do pedido inteiro. Cada chamada usa só o tempo que sobra. */
+async function post(url: string, headers: Record<string, string>, body: any, provider: Provider, until: number) {
+  const left = until - Date.now();
+  if (left < 3000) throw tooSlow();
+  const label = body?.model ?? /models\/([^:]+):/.exec(url)?.[1] ?? "?";
+  const started = Date.now();
   let res: Response;
   try {
     res = await fetch(url, {
-      method: "POST", cache: "no-store", signal: AbortSignal.timeout(TIMEOUT),
+      method: "POST", cache: "no-store", signal: AbortSignal.timeout(left),
       headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body),
     });
   } catch {
-    throw new ProviderError("A IA demorou demais para responder. Tente de novo.", 504);
+    console.warn("ai", provider, label, "sem resposta", `${Date.now() - started}ms`);
+    throw tooSlow();
   }
+  // Só modelo, código e tempo: nada da conversa vai para o log.
+  console.log("ai", provider, label, res.status, `${Date.now() - started}ms`);
   const data = await res.json().catch(() => ({}));
   if (res.ok) return data;
   const name = provider === "claude" ? "A Anthropic" : "O Google";
@@ -67,12 +75,12 @@ function toClaude(messages: ChatMsg[]) {
   }), "content");
 }
 
-async function claude(key: string, model: string, system: string, messages: ChatMsg[], tools: ToolDef[]): Promise<Reply> {
+async function claude(key: string, model: string, system: string, messages: ChatMsg[], tools: ToolDef[], until: number): Promise<Reply> {
   const data = await post("https://api.anthropic.com/v1/messages", { "x-api-key": key, "anthropic-version": "2023-06-01" }, {
     model, max_tokens: 4096, system,
     tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })),
     messages: toClaude(messages),
-  }, "claude");
+  }, "claude", until);
   const blocks: any[] = Array.isArray(data?.content) ? data.content : [];
   return {
     text: blocks.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim(),
@@ -121,7 +129,7 @@ function toGemini(messages: ChatMsg[]) {
   }), "parts");
 }
 
-async function gemini(key: string, model: string, system: string, messages: ChatMsg[], tools: ToolDef[]): Promise<Reply> {
+async function gemini(key: string, model: string, system: string, messages: ChatMsg[], tools: ToolDef[], until: number): Promise<Reply> {
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: toGemini(messages),
@@ -129,7 +137,18 @@ async function gemini(key: string, model: string, system: string, messages: Chat
     generationConfig: { maxOutputTokens: 8192 },
   };
   const url = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
-  const call = (m: string) => post(url(m), { "x-goog-api-key": key }, body, "gemini");
+  // Gemini 3 em diante "pensa" antes de responder: raciocínio curto deixa a resposta bem mais rápida.
+  const quick = (m: string) => /^gemini-([3-9]|\d{2})/.test(m);
+  const call = async (m: string) => {
+    if (!quick(m)) return post(url(m), { "x-goog-api-key": key }, body, "gemini", until);
+    try {
+      return await post(url(m), { "x-goog-api-key": key }, { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: { thinkingLevel: "low" } } }, "gemini", until);
+    } catch (e) {
+      // Modelo que não aceita o ajuste: tenta sem ele.
+      if (e instanceof ProviderError && e.status !== 503 && /thinking/i.test(e.message)) return post(url(m), { "x-goog-api-key": key }, body, "gemini", until);
+      throw e;
+    }
+  };
   let data: any;
   let used: string | undefined;
   try {
@@ -142,6 +161,7 @@ async function gemini(key: string, model: string, system: string, messages: Chat
       data = await call(used);
     } else if (e.status === 503) {
       // Sobrecarga costuma passar rápido: espera e tenta de novo; depois, outro modelo Flash só desta vez.
+      if (until - Date.now() < 8000) throw e;
       await new Promise((r) => setTimeout(r, 2000));
       try {
         data = await call(model);
@@ -175,8 +195,8 @@ async function gemini(key: string, model: string, system: string, messages: Chat
   };
 }
 
-export function ask(provider: Provider, key: string, model: string, system: string, messages: ChatMsg[], tools: ToolDef[]) {
-  return provider === "claude" ? claude(key, model, system, messages, tools) : gemini(key, model, system, messages, tools);
+export function ask(provider: Provider, key: string, model: string, system: string, messages: ChatMsg[], tools: ToolDef[], until: number) {
+  return provider === "claude" ? claude(key, model, system, messages, tools, until) : gemini(key, model, system, messages, tools, until);
 }
 
 /**
