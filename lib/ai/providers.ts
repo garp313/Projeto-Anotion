@@ -4,10 +4,12 @@ import type { ToolDef } from "./tools";
 import type { ChatMsg, Provider, ToolCall } from "./types";
 
 /** `raw`: partes do Gemini como vieram. Ele exige recebê-las de volta sem mudança (assinaturas). */
-export type Reply = { text: string; calls: ToolCall[]; raw?: any[] };
+export type Reply = { text: string; calls: ToolCall[]; raw?: any[]; model?: string };
 
 /** Erro que pode ser mostrado a quem usa. */
 export class ProviderError extends Error {
+  /** Modelo que o provedor indicou no lugar de um desativado. */
+  replacement?: string;
   constructor(message: string, public status = 502) { super(message); }
 }
 
@@ -29,7 +31,12 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
   const detail = String(data?.error?.message ?? "").slice(0, 200);
   if (res.status === 401 || res.status === 403 || /api key|API_KEY/i.test(detail)) throw new ProviderError(`${name} recusou a chave. Confira nas configurações do assistente.`, 401);
   if (res.status === 429) throw new ProviderError(`${name} avisou que o limite de uso foi atingido. Espere um pouco ou confira o saldo da conta.`, 429);
-  if (res.status === 404) throw new ProviderError(`Modelo não encontrado. Confira o nome do modelo nas configurações.${detail ? ` (${detail})` : ""}`, 400);
+  if (res.status === 404) {
+    const err = new ProviderError(`Modelo não encontrado. Confira o nome do modelo nas configurações.${detail ? ` (${detail})` : ""}`, 400);
+    // "This model ... is no longer available ... Please update your code to use models/gemini-x".
+    err.replacement = /no longer available[\s\S]*?use (?:models\/)?([a-z0-9][\w.-]*[a-z0-9])/i.exec(String(data?.error?.message ?? ""))?.[1];
+    throw err;
+  }
   if (res.status === 400 && /credit|balance|billing/i.test(detail)) throw new ProviderError(`${name} avisou que falta saldo na conta da API.`, 402);
   console.error("ai provider", provider, res.status, detail);
   throw new ProviderError(`${name} respondeu com erro (${res.status}).${detail ? ` ${detail}` : ""}`);
@@ -114,13 +121,23 @@ function toGemini(messages: ChatMsg[]) {
 }
 
 async function gemini(key: string, model: string, system: string, messages: ChatMsg[], tools: ToolDef[]): Promise<Reply> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const data = await post(url, { "x-goog-api-key": key }, {
+  const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: toGemini(messages),
     tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(t.parameters) })) }],
     generationConfig: { maxOutputTokens: 8192 },
-  }, "gemini");
+  };
+  const url = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+  let data: any;
+  let used: string | undefined;
+  try {
+    data = await post(url(model), { "x-goog-api-key": key }, body, "gemini");
+  } catch (e) {
+    // O Google desativa modelos e indica o substituto: tenta uma vez com ele.
+    if (!(e instanceof ProviderError) || !e.replacement || e.replacement === model) throw e;
+    used = e.replacement;
+    data = await post(url(used), { "x-goog-api-key": key }, body, "gemini");
+  }
   const candidate = data?.candidates?.[0];
   if (!candidate?.content && data?.promptFeedback?.blockReason) throw new ProviderError("O Gemini bloqueou este pedido pelos filtros de segurança dele.", 400);
   const parts: any[] = candidate?.content?.parts ?? [];
@@ -132,6 +149,7 @@ async function gemini(key: string, model: string, system: string, messages: Chat
       ...(p.thoughtSignature ? { sig: p.thoughtSignature } : {}),
     })),
     ...(parts.length ? { raw: parts } : {}),
+    ...(used ? { model: used } : {}),
   };
 }
 
@@ -163,5 +181,8 @@ export async function listModels(provider: Provider, key: string): Promise<strin
 /** Os nomes mais úteis para sugerir quando o modelo digitado não existe. */
 export function suggestModels(provider: Provider, models: string[]) {
   const pref = provider === "claude" ? /sonnet|haiku/ : /flash/;
+  // Versão mais nova primeiro: "gemini-3.8-flash" antes de "gemini-2.5-flash".
+  const version = (m: string) => Number(/(\d+(?:\.\d+)?)/.exec(m)?.[1] ?? 0);
+  models = [...models].sort((a, b) => version(b) - version(a));
   return [...models.filter((m) => pref.test(m) && !/image|tts|audio|live|embedding/.test(m)), ...models].filter((m, i, a) => a.indexOf(m) === i).slice(0, 5);
 }

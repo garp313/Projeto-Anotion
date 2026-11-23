@@ -5,7 +5,7 @@ export type Provider = "claude" | "gemini";
 export const PROVIDER_LABEL: Record<Provider, string> = { claude: "Claude", gemini: "Gemini" };
 
 /** Modelo usado quando a pessoa não escolhe outro. */
-export const DEFAULT_MODEL: Record<Provider, string> = { claude: "claude-sonnet-5-5", gemini: "gemini-2.5-flash" };
+export const DEFAULT_MODEL: Record<Provider, string> = { claude: "claude-sonnet-5-5", gemini: "gemini-3.8-flash" };
 
 export type ToolCall = {
   id: string;
@@ -42,6 +42,8 @@ export type ChatResponse = {
   changed: boolean;
   /** Linhas com data gravada: a tela tenta levar para a agenda do Google, se o banco sincroniza. */
   dated?: string[];
+  /** O provedor desativou o modelo salvo e o app trocou pelo indicado. */
+  model?: string;
   error?: string;
 };
 

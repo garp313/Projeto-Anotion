@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isProvider, loadKey } from "@/lib/ai/keys";
+import { isProvider, loadKey, updateModel } from "@/lib/ai/keys";
 import { ask, ProviderError } from "@/lib/ai/providers";
 import { runTool, summarize, systemPrompt } from "@/lib/ai/run";
 import { TOOLS } from "@/lib/ai/tools";
@@ -57,9 +57,10 @@ export async function POST(req: Request) {
   if (!key) return NextResponse.json({ error: `Conecte a sua chave do ${PROVIDER_LABEL[provider]} nas configurações do assistente.` }, { status: 400 });
 
   let changed = false;
+  let switched: string | undefined;
   const dated: string[] = [];
   const respond = (pending: string[] | null, error?: string) =>
-    NextResponse.json({ messages, pending, changed, dated, ...(error ? { error } : {}) } satisfies ChatResponse);
+    NextResponse.json({ messages, pending, changed, dated, ...(switched ? { model: switched } : {}), ...(error ? { error } : {}) } satisfies ChatResponse);
 
   const run = async (calls: ToolCall[], skipWrites = false) => {
     const results: ToolResult[] = [];
@@ -87,6 +88,11 @@ export async function POST(req: Request) {
     const system = await systemPrompt(sb, user, pageId);
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const reply = await ask(provider, key.apiKey, key.model, system, windowOf(messages), TOOLS);
+      if (reply.model && reply.model !== key.model) {
+        // Modelo desativado: guarda o substituto para as próximas conversas.
+        key.model = switched = reply.model;
+        await updateModel(sb, provider, reply.model);
+      }
       messages.push({ role: "assistant", text: reply.text, ...(reply.calls.length ? { calls: reply.calls } : {}), ...(reply.raw ? { raw: reply.raw } : {}) });
       if (!reply.calls.length) return respond(null);
       if (reply.calls.some((c) => WRITE_TOOLS.has(c.name))) {

@@ -163,7 +163,13 @@ export function AssistantPanel() {
 
   const pick = (p: Provider) => { setProvider(p); try { localStorage.setItem(PROVIDER_KEY, p); } catch { /* ok */ } };
 
-  const call = async (messages: ChatMsg[], decision?: "apply" | "discard") => {
+  /** `typed`: o texto que a pessoa acabou de mandar. Se nada voltar, ele sai da conversa e volta para a caixa. */
+  const call = async (messages: ChatMsg[], decision?: "apply" | "discard", typed?: string) => {
+    const undo = () => {
+      if (!typed) return;
+      setChat({ messages: messages.slice(0, -1), pending: null });
+      setInput((cur) => cur || typed);
+    };
     setBusy(true); setError(null);
     try {
       const res = await fetch("/api/ai/chat", {
@@ -171,7 +177,9 @@ export function AssistantPanel() {
         body: JSON.stringify({ provider, messages, pageId, decision }),
       });
       const data = await res.json().catch(() => ({})) as Partial<ChatResponse> & { dated?: string[] };
-      if (!res.ok || !data.messages) { setError(data.error ?? "Não foi possível falar com o assistente."); return; }
+      if (!res.ok || !data.messages) { setError(data.error ?? "Não foi possível falar com o assistente."); undo(); return; }
+      if (data.model) void qc.invalidateQueries({ queryKey: ["ai-keys"] });
+      if (data.error && data.messages.at(-1)?.role === "user") { setError(data.error); undo(); return; }
       setChat({ messages: data.messages, pending: data.pending ?? null });
       if (data.error) setError(data.error);
       if (data.changed) {
@@ -183,6 +191,7 @@ export function AssistantPanel() {
       }
     } catch {
       setError("Sem conexão. Tente de novo.");
+      undo();
     } finally {
       setBusy(false);
     }
@@ -194,7 +203,7 @@ export function AssistantPanel() {
     const messages: ChatMsg[] = [...chat.messages, { role: "user", text: t }];
     setChat({ messages, pending: null });
     setInput("");
-    void call(messages);
+    void call(messages, undefined, t);
   };
   const decide = (d: "apply" | "discard") => void call(chat.messages, d);
   const reset = () => { setChat({ messages: [], pending: null }); setError(null); };
