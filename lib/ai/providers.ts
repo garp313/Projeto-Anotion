@@ -30,6 +30,7 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
   const name = provider === "claude" ? "A Anthropic" : "O Google";
   const detail = String(data?.error?.message ?? "").slice(0, 200);
   if (res.status === 401 || res.status === 403 || /api key|API_KEY/i.test(detail)) throw new ProviderError(`${name} recusou a chave. Confira nas configurações do assistente.`, 401);
+  if (res.status === 503 || res.status === 529 || /overloaded|high demand/i.test(detail)) throw new ProviderError(`${name} está sobrecarregado agora. Tente de novo em alguns minutos.`, 503);
   if (res.status === 429) throw new ProviderError(`${name} avisou que o limite de uso foi atingido. Espere um pouco ou confira o saldo da conta.`, 429);
   if (res.status === 404) {
     const err = new ProviderError(`Modelo não encontrado. Confira o nome do modelo nas configurações.${detail ? ` (${detail})` : ""}`, 400);
@@ -128,15 +129,29 @@ async function gemini(key: string, model: string, system: string, messages: Chat
     generationConfig: { maxOutputTokens: 8192 },
   };
   const url = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+  const call = (m: string) => post(url(m), { "x-goog-api-key": key }, body, "gemini");
   let data: any;
   let used: string | undefined;
   try {
-    data = await post(url(model), { "x-goog-api-key": key }, body, "gemini");
+    data = await call(model);
   } catch (e) {
-    // O Google desativa modelos e indica o substituto: tenta uma vez com ele.
-    if (!(e instanceof ProviderError) || !e.replacement || e.replacement === model) throw e;
-    used = e.replacement;
-    data = await post(url(used), { "x-goog-api-key": key }, body, "gemini");
+    if (!(e instanceof ProviderError)) throw e;
+    if (e.replacement && e.replacement !== model) {
+      // O Google desativa modelos e indica o substituto: tenta uma vez com ele e guarda a troca.
+      used = e.replacement;
+      data = await call(used);
+    } else if (e.status === 503) {
+      // Sobrecarga costuma passar rápido: espera e tenta de novo; depois, outro modelo Flash só desta vez.
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        data = await call(model);
+      } catch (again) {
+        if (!(again instanceof ProviderError) || again.status !== 503) throw again;
+        const other = suggestModels("gemini", (await listModels("gemini", key).catch(() => null)) ?? []).find((m) => m !== model);
+        if (!other) throw again;
+        data = await call(other);
+      }
+    } else throw e;
   }
   const candidate = data?.candidates?.[0];
   if (!candidate?.content && data?.promptFeedback?.blockReason) throw new ProviderError("O Gemini bloqueou este pedido pelos filtros de segurança dele.", 400);
