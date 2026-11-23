@@ -147,9 +147,16 @@ async function gemini(key: string, model: string, system: string, messages: Chat
         data = await call(model);
       } catch (again) {
         if (!(again instanceof ProviderError) || again.status !== 503) throw again;
-        const other = suggestModels("gemini", (await listModels("gemini", key).catch(() => null)) ?? []).find((m) => m !== model);
-        if (!other) throw again;
-        data = await call(other);
+        console.warn("ai gemini sobrecarregado", model);
+        const others = suggestModels("gemini", (await listModels("gemini", key).catch(() => null)) ?? []).filter((m) => m !== model).slice(0, 3);
+        let last: unknown = again;
+        for (const other of others) {
+          try { data = await call(other); last = null; console.warn("ai gemini respondeu com", other); break; } catch (err) {
+            console.warn("ai gemini alternativa falhou", other, err instanceof ProviderError ? err.status : "?");
+            last = err;
+          }
+        }
+        if (last) throw again;
       }
     } else throw e;
   }
