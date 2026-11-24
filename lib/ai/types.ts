@@ -44,6 +44,10 @@ export type ChatResponse = {
   dated?: string[];
   /** O provedor desativou o modelo salvo e o app trocou pelo indicado. */
   model?: string;
+  /** A IA pediu consultas: a tela chama de novo para a próxima etapa. Cada etapa é um pedido curto. */
+  next?: boolean;
+  /** Modelo que respondeu no lugar de um sobrecarregado: a tela repete nas próximas etapas. */
+  served?: string;
   error?: string;
 };
 
@@ -59,6 +63,20 @@ export const READ_LABEL: Record<string, string> = {
   listar_linhas: "Leu as linhas de um banco",
   listar_membros: "Viu os membros do time",
 };
+
+/** O que aparece enquanto a próxima etapa roda. */
+export const STEP_LABEL: Record<string, string> = {
+  buscar: "Buscando páginas…",
+  ler_pagina: "Lendo a página…",
+  listar_linhas: "Lendo as linhas do banco…",
+  listar_membros: "Vendo os membros do time…",
+};
+
+/** A conversa parou no meio (uma etapa falhou): dá para continuar de onde estava. */
+export function unfinished(messages: ChatMsg[]) {
+  const last = messages[messages.length - 1];
+  return last?.role === "tool" || (last?.role === "assistant" && Boolean(last.calls?.length) && pendingCalls(messages).length === 0);
+}
 
 /** Mensagens pendentes: a última do assistente tem alterações ainda sem resposta. */
 export function pendingCalls(messages: ChatMsg[]): ToolCall[] {

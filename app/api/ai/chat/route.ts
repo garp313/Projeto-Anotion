@@ -35,6 +35,17 @@ function clean(raw: unknown): ChatMsg[] | null {
   return out;
 }
 
+/**
+ * Consultas que ficaram sem resposta (uma etapa falhou e a pessoa seguiu conversando) viram texto:
+ * as duas APIs recusam uma chamada de ferramenta sem o resultado logo depois.
+ */
+function closeDangling(messages: ChatMsg[]): ChatMsg[] {
+  return messages.map((m, i) => {
+    if (m.role !== "assistant" || !m.calls?.length || messages[i + 1]?.role === "tool" || i === messages.length - 1) return m;
+    return { role: "assistant", text: m.text || "(consulta interrompida)" };
+  });
+}
+
 /** Só as últimas mensagens vão para a IA, começando sempre numa fala da pessoa. */
 function windowOf(messages: ChatMsg[]) {
   let start = Math.max(0, messages.length - WINDOW);
@@ -61,8 +72,8 @@ export async function POST(req: Request) {
   let changed = false;
   let switched: string | undefined;
   const dated: string[] = [];
-  const respond = (pending: string[] | null, error?: string) =>
-    NextResponse.json({ messages, pending, changed, dated, ...(switched ? { model: switched } : {}), ...(error ? { error } : {}) } satisfies ChatResponse);
+  const respond = (pending: string[] | null, error?: string, extra: Partial<ChatResponse> = {}) =>
+    NextResponse.json({ messages, pending, changed, dated, ...(switched ? { model: switched } : {}), ...(error ? { error } : {}), ...extra } satisfies ChatResponse);
 
   const run = async (calls: ToolCall[], skipWrites = false) => {
     const results: ToolResult[] = [];
@@ -78,38 +89,43 @@ export async function POST(req: Request) {
 
   // Resposta a uma alteração proposta: aplica ou registra a recusa.
   const waiting = pendingCalls(messages);
+  const last = messages[messages.length - 1];
   if (waiting.length) {
     if (decision !== "apply" && decision !== "discard") return NextResponse.json({ error: "Responda à alteração proposta antes de continuar." }, { status: 409 });
     await run(waiting, decision === "discard");
     if (decision === "discard") return respond(null);
-  } else if (messages[messages.length - 1].role !== "user") {
+  } else if (last.role === "assistant" && last.calls?.length) {
+    // Etapa seguinte: roda as consultas que a IA pediu na etapa anterior.
+    await run(last.calls);
+  } else if (last.role !== "user" && last.role !== "tool") {
+    // "tool" no fim: uma etapa falhou depois das consultas e a pessoa pediu para continuar.
     return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
+  }
+
+  // Limite de etapas por pergunta: evita a IA ficar consultando sem fim.
+  const lastUser = messages.map((m) => m.role).lastIndexOf("user");
+  if (messages.slice(lastUser + 1).filter((m) => m.role === "assistant").length >= MAX_ROUNDS) {
+    messages.push({ role: "assistant", text: "Parei aqui para não demorar demais. Diga \"continue\" se quiser que eu siga." });
+    return respond(null);
   }
 
   try {
     const system = await systemPrompt(sb, user, pageId);
-    let model = key.model;
-    for (let round = 0; round < MAX_ROUNDS; round++) {
-      // Perto do limite da Vercel: para aqui e guarda o que já foi feito.
-      if (round > 0 && until - Date.now() < 12_000) break;
-      const reply = await ask(provider, key.apiKey, model, system, windowOf(messages), TOOLS, until);
-      // Um modelo alternativo respondeu: segue com ele até o fim deste pedido.
-      if (reply.served) model = reply.served;
-      if (reply.model && reply.model !== key.model) {
-        // Modelo desativado: guarda o substituto para as próximas conversas.
-        key.model = switched = reply.model;
-        if (!reply.served) model = reply.model;
-        await updateModel(sb, provider, reply.model);
-      }
-      messages.push({ role: "assistant", text: reply.text, ...(reply.calls.length ? { calls: reply.calls } : {}), ...(reply.raw ? { raw: reply.raw } : {}) });
-      if (!reply.calls.length) return respond(null);
-      if (reply.calls.some((c) => WRITE_TOOLS.has(c.name))) {
-        return respond(await Promise.all(reply.calls.filter((c) => WRITE_TOOLS.has(c.name)).map((c) => summarize(sb, c))));
-      }
-      await run(reply.calls);
+    // Uma única chamada à IA por pedido: cada etapa tem o tempo inteiro, e a tela encadeia as etapas.
+    const prefer = typeof body.prefer === "string" && /^[a-zA-Z0-9._:-]{1,80}$/.test(body.prefer) ? body.prefer : null;
+    const reply = await ask(provider, key.apiKey, prefer ?? key.model, system, windowOf(closeDangling(messages)), TOOLS, until);
+    if (reply.model && reply.model !== key.model) {
+      // Modelo desativado: guarda o substituto para as próximas conversas.
+      switched = reply.model;
+      await updateModel(sb, provider, reply.model);
     }
-    messages.push({ role: "assistant", text: "Parei aqui para não demorar demais. Diga \"continue\" se quiser que eu siga." });
-    return respond(null);
+    messages.push({ role: "assistant", text: reply.text, ...(reply.calls.length ? { calls: reply.calls } : {}), ...(reply.raw ? { raw: reply.raw } : {}) });
+    if (!reply.calls.length) return respond(null);
+    if (reply.calls.some((c) => WRITE_TOOLS.has(c.name))) {
+      return respond(await Promise.all(reply.calls.filter((c) => WRITE_TOOLS.has(c.name)).map((c) => summarize(sb, c))));
+    }
+    const served = reply.served ?? prefer ?? undefined;
+    return respond(null, undefined, { next: true, ...(served ? { served } : {}) });
   } catch (e) {
     if (e instanceof ProviderError && e.switchedTo && e.switchedTo !== key.model) {
       switched = e.switchedTo;

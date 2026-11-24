@@ -34,11 +34,15 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "listar_linhas",
-    description: "Lista as linhas de um banco de dados com os valores de cada coluna.",
+    description: "Lista as linhas de um banco de dados com os valores de cada coluna. Use os filtros sempre que a pergunta permitir: o app filtra antes e a resposta fica bem mais rápida.",
     parameters: obj({
       banco_id: str("Id do banco de dados."),
       busca: str("Filtra linhas cujo título contém este texto. Opcional."),
-      limite: { type: "number", description: "Máximo de linhas (padrão 50, até 200)." },
+      atrasadas: { type: "boolean", description: "Só linhas com prazo vencido e ainda não concluídas. Opcional." },
+      abertas: { type: "boolean", description: "Só linhas ainda não concluídas (em andamento, a fazer, bloqueadas). Opcional." },
+      status: str("Só linhas com este status ou seleção, por exemplo Em andamento. Opcional."),
+      responsavel: str("Só linhas em que esta pessoa aparece numa coluna de pessoa. Opcional."),
+      limite: { type: "number", description: "Máximo de linhas (padrão 40, até 200)." },
     }, ["banco_id"]),
   },
   {

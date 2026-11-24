@@ -7,7 +7,7 @@ import { Check, Loader2, Plus, Send, Settings, Sparkles, X } from "lucide-react"
 import { useAssistant } from "@/lib/store/assistant";
 import { scheduleEmails } from "@/lib/collab";
 import { Choice, fieldClass } from "@/components/database/ui";
-import { DEFAULT_MODEL, PROVIDER_LABEL, READ_LABEL, type ChatMsg, type ChatResponse, type KeysResponse, type Provider } from "@/lib/ai/types";
+import { DEFAULT_MODEL, PROVIDER_LABEL, READ_LABEL, STEP_LABEL, unfinished, type ChatMsg, type ChatResponse, type KeysResponse, type Provider } from "@/lib/ai/types";
 
 const CHAT_KEY = "anotion:ai-chat";
 const PROVIDER_KEY = "anotion:ai-provider";
@@ -128,6 +128,7 @@ export function AssistantPanel() {
   const [chat, setChat] = useState<Saved>({ messages: [], pending: null });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
@@ -163,37 +164,56 @@ export function AssistantPanel() {
 
   const pick = (p: Provider) => { setProvider(p); try { localStorage.setItem(PROVIDER_KEY, p); } catch { /* ok */ } };
 
-  /** `typed`: o texto que a pessoa acabou de mandar. Se nada voltar, ele sai da conversa e volta para a caixa. */
-  const call = async (messages: ChatMsg[], decision?: "apply" | "discard", typed?: string) => {
+  /**
+   * Cada pedido ao servidor faz uma etapa (uma chamada à IA). Enquanto a IA pedir consultas,
+   * a tela chama de novo: assim nenhuma etapa disputa o tempo de outra.
+   * `typed`: o texto que a pessoa acabou de mandar. Se a primeira etapa falhar, ele volta para a caixa.
+   */
+  const call = async (start: ChatMsg[], decision?: "apply" | "discard", typed?: string) => {
     const undo = () => {
       if (!typed) return;
-      setChat({ messages: messages.slice(0, -1), pending: null });
+      setChat({ messages: start.slice(0, -1), pending: null });
       setInput((cur) => cur || typed);
     };
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setStep(null);
+    let messages = start;
+    let dec = decision;
+    let prefer: string | undefined;
+    let progressed = false;
     try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, messages, pageId, decision }),
-      });
-      const data = await res.json().catch(() => ({})) as Partial<ChatResponse> & { dated?: string[] };
-      if (!res.ok || !data.messages) { setError(data.error ?? "Não foi possível falar com o assistente."); undo(); return; }
-      if (data.model) void qc.invalidateQueries({ queryKey: ["ai-keys"] });
-      if (data.error && data.messages.at(-1)?.role === "user") { setError(data.error); undo(); return; }
-      setChat({ messages: data.messages, pending: data.pending ?? null });
-      if (data.error) setError(data.error);
-      if (data.changed) {
-        void qc.invalidateQueries();
-        scheduleEmails();
-        for (const id of (data.dated ?? []).slice(0, 30)) {
-          void fetch("/api/sync/task-event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pageId: id }) }).catch(() => null);
+      for (let i = 0; i < 12; i++) {
+        const res = await fetch("/api/ai/chat", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider, messages, pageId, decision: dec, prefer }),
+        });
+        const data = await res.json().catch(() => ({})) as Partial<ChatResponse>;
+        if (!res.ok || !data.messages) { setError(data.error ?? "Não foi possível falar com o assistente."); if (!progressed) undo(); return; }
+        if (data.model) void qc.invalidateQueries({ queryKey: ["ai-keys"] });
+        if (data.error && !progressed && data.messages.at(-1)?.role === "user") { setError(data.error); undo(); return; }
+        progressed = true;
+        setChat({ messages: data.messages, pending: data.pending ?? null });
+        if (data.error) setError(data.error);
+        if (data.changed) {
+          void qc.invalidateQueries();
+          scheduleEmails();
+          for (const id of (data.dated ?? []).slice(0, 30)) {
+            void fetch("/api/sync/task-event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pageId: id }) }).catch(() => null);
+          }
         }
+        if (!data.next) return;
+        messages = data.messages;
+        dec = undefined;
+        prefer = data.served ?? prefer;
+        const last = messages[messages.length - 1];
+        const names = last?.role === "assistant" ? (last.calls ?? []).map((c) => c.name) : [];
+        setStep(STEP_LABEL[names[0]] ?? null);
       }
     } catch {
       setError("Sem conexão. Tente de novo.");
-      undo();
+      if (!progressed) undo();
     } finally {
       setBusy(false);
+      setStep(null);
     }
   };
 
@@ -260,7 +280,10 @@ export function AssistantPanel() {
                 </div>
               </div>
             )}
-            {busy && <p className="flex items-center gap-1.5 text-xs text-[var(--n-text-muted)]"><Loader2 size={13} className="animate-spin" /> Pensando…</p>}
+            {busy && <p className="flex items-center gap-1.5 text-xs text-[var(--n-text-muted)]"><Loader2 size={13} className="animate-spin" /> {step ?? "Pensando…"}</p>}
+            {!busy && !chat.pending && unfinished(chat.messages) && (
+              <button type="button" onClick={() => void call(chat.messages)} className="rounded border border-[var(--n-border)] px-2.5 py-1 text-xs hover:bg-[var(--n-hover)]">Continuar de onde parou</button>
+            )}
             {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
             <div ref={bottom} />
           </div>

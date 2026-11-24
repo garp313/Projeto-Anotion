@@ -135,19 +135,67 @@ async function lerPagina(sb: Sb, args: any) {
   return base;
 }
 
+const DONE = ["concluido", "concluida", "feito", "feita", "done", "finalizado", "finalizada", "entregue", "encerrado", "cancelado"];
+
+/** A linha está concluída? Status no grupo "concluído", opção com nome de concluído ou caixa marcada chamada Concluído/Feito. */
+function isDone(schema: ColumnSchema[], props: Record<string, any>) {
+  for (const c of schema) {
+    const v = props?.[c.id];
+    if ((c.type === "status" || c.type === "select") && v) {
+      const o = c.options?.find((x) => x.id === v);
+      if (o && (o.group === "complete" || DONE.includes(fold(o.value)))) return true;
+    }
+    if (c.type === "checkbox" && v === true && DONE.some((d) => fold(c.name).startsWith(d.slice(0, 6)))) return true;
+  }
+  return false;
+}
+
+/** Coluna de prazo: a de data com nome de prazo; sem ela, a primeira de data. */
+function dueColumn(schema: ColumnSchema[]) {
+  const dates = schema.filter((c) => c.type === "date");
+  return dates.find((c) => /prazo|entrega|venc|data|fim|termino|deadline/.test(fold(c.name))) ?? dates[0];
+}
+
 async function listarLinhas(sb: Sb, args: any) {
   const db = await getDatabase(sb, args.banco_id);
-  const limit = Math.min(200, Math.max(1, Number(args.limite) || 50));
-  let q = sb.from("pages").select("id,title,row_properties", { count: "exact" }).eq("parent_id", db.id).eq("is_archived", false).order("position").limit(limit);
+  const schema = schemaOf(db);
+  const limit = Math.min(200, Math.max(1, Number(args.limite) || 40));
+  const filtered = Boolean(args.atrasadas || args.abertas || String(args.status ?? "").trim() || String(args.responsavel ?? "").trim());
+  // Com filtro, o app lê mais linhas e manda à IA só as que servem.
+  let q = sb.from("pages").select("id,title,row_properties", { count: "exact" }).eq("parent_id", db.id).eq("is_archived", false)
+    .order("position").limit(filtered ? 1000 : limit);
   if (String(args.busca ?? "").trim()) q = q.ilike("title", like(String(args.busca).trim()));
   const { data, count, error } = await q;
   if (error) throw new ToolError(error.message);
-  const cols = schemaOf(db).filter((c) => c.type !== "title");
+
+  const today = todayInBrazil();
+  const due = dueColumn(schema);
+  const statusCols = schema.filter((c) => c.type === "status" || c.type === "select");
+  const personCols = schema.filter((c) => c.type === "person");
+  const wantStatus = fold(String(args.status ?? ""));
+  const wantPerson = fold(String(args.responsavel ?? ""));
+  let rows = data ?? [];
+  if (args.atrasadas) {
+    if (!due) throw new ToolError(`o banco "${db.title}" não tem coluna de data`);
+    rows = rows.filter((r) => {
+      const d = r.row_properties?.[due.id];
+      const day = d && !d.openEnd ? String(d.end ?? d.start ?? "").slice(0, 10) : "";
+      return day && day < today && !isDone(schema, r.row_properties);
+    });
+  }
+  if (args.abertas) rows = rows.filter((r) => !isDone(schema, r.row_properties));
+  if (wantStatus) rows = rows.filter((r) => statusCols.some((c) => fold(showValue(c, r.row_properties?.[c.id])).includes(wantStatus)));
+  if (wantPerson) rows = rows.filter((r) => personCols.some((c) => fold(showValue(c, r.row_properties?.[c.id])).includes(wantPerson)));
+
+  const cols = schema.filter((c) => c.type !== "title");
+  const cut = (t: string) => (t.length > 200 ? `${t.slice(0, 200)}…` : t);
   return {
-    banco: db.title, colunas: schemaOf(db).map((c) => c.name), total: count ?? data?.length ?? 0,
-    linhas: (data ?? []).map((r) => {
+    banco: db.title, colunas: schema.map((c) => c.name),
+    ...(filtered ? { encontradas: rows.length } : { total: count ?? rows.length }),
+    ...(args.atrasadas && due ? { prazo_usado: due.name, hoje: today } : {}),
+    linhas: rows.slice(0, limit).map((r) => {
       const valores: Record<string, string> = {};
-      for (const c of cols) { const v = showValue(c, r.row_properties?.[c.id]); if (v) valores[c.name] = v; }
+      for (const c of cols) { const v = showValue(c, r.row_properties?.[c.id]); if (v) valores[c.name] = cut(v); }
       return { id: r.id, titulo: r.title || "Sem título", valores };
     }),
   };
@@ -377,6 +425,7 @@ Como funciona o app:
 Regras:
 - Consulte com as ferramentas antes de afirmar algo sobre o conteúdo. Nunca invente ids: busque.
 - Para criar ou alterar, chame direto a ferramenta de escrita. O app mostra um resumo e a pessoa clica em Aplicar; não peça confirmação em texto antes.
+- Para perguntas sobre linhas (atrasadas, em andamento, de uma pessoa), use os filtros de listar_linhas em vez de ler tudo.
 - Agrupe as alterações: muitas linhas vão numa única chamada de adicionar_linhas ou editar_linhas.
 - Use os nomes de coluna exatamente como estão no banco. Leia o banco antes de preencher.
 - Você não apaga nada. Se pedirem para apagar, explique que dá para fazer pela tela (lixeira).
