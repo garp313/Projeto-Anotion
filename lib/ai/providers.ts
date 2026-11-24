@@ -10,6 +10,8 @@ export type Reply = { text: string; calls: ToolCall[]; raw?: any[]; model?: stri
 export class ProviderError extends Error {
   /** Modelo que o provedor indicou no lugar de um desativado. */
   replacement?: string;
+  /** A troca de modelo desativado aconteceu antes da falha: quem chama guarda o novo modelo. */
+  switchedTo?: string;
   constructor(message: string, public status = 502) { super(message); }
 }
 
@@ -151,34 +153,43 @@ async function gemini(key: string, model: string, system: string, messages: Chat
   };
   let data: any;
   let used: string | undefined;
+  let current = model;
+  // O Google desativa modelos e indica o substituto: passa a usar o indicado e guarda a troca.
+  const attempt = async () => {
+    try {
+      return await call(current);
+    } catch (e) {
+      if (!(e instanceof ProviderError) || !e.replacement || e.replacement === current) throw e;
+      current = used = e.replacement;
+      return await call(current);
+    }
+  };
   try {
-    data = await call(model);
-  } catch (e) {
-    if (!(e instanceof ProviderError)) throw e;
-    if (e.replacement && e.replacement !== model) {
-      // O Google desativa modelos e indica o substituto: tenta uma vez com ele e guarda a troca.
-      used = e.replacement;
-      data = await call(used);
-    } else if (e.status === 503) {
-      // Sobrecarga costuma passar rápido: espera e tenta de novo; depois, outro modelo Flash só desta vez.
-      if (until - Date.now() < 8000) throw e;
+    try {
+      data = await attempt();
+    } catch (e) {
+      if (!(e instanceof ProviderError) || e.status !== 503 || until - Date.now() < 8000) throw e;
+      // Sobrecarga costuma passar rápido: espera e tenta de novo; depois, outros modelos Flash só desta vez.
       await new Promise((r) => setTimeout(r, 2000));
       try {
-        data = await call(model);
+        data = await attempt();
       } catch (again) {
         if (!(again instanceof ProviderError) || again.status !== 503) throw again;
-        console.warn("ai gemini sobrecarregado", model);
-        const others = suggestModels("gemini", (await listModels("gemini", key).catch(() => null)) ?? []).filter((m) => m !== model).slice(0, 3);
-        let last: unknown = again;
+        console.warn("ai gemini sobrecarregado", current);
+        const others = suggestModels("gemini", (await listModels("gemini", key).catch(() => null)) ?? [])
+          .filter((m) => m !== current && m !== model).slice(0, 3);
         for (const other of others) {
-          try { data = await call(other); last = null; console.warn("ai gemini respondeu com", other); break; } catch (err) {
+          try { data = await call(other); console.warn("ai gemini respondeu com", other); break; } catch (err) {
             console.warn("ai gemini alternativa falhou", other, err instanceof ProviderError ? err.status : "?");
-            last = err;
           }
         }
-        if (last) throw again;
+        if (!data) throw again;
       }
-    } else throw e;
+    }
+  } catch (e) {
+    // Mesmo sem resposta, a troca de um modelo desativado fica salva para a próxima vez.
+    if (e instanceof ProviderError && used) e.switchedTo = used;
+    throw e;
   }
   const candidate = data?.candidates?.[0];
   if (!candidate?.content && data?.promptFeedback?.blockReason) throw new ProviderError("O Gemini bloqueou este pedido pelos filtros de segurança dele.", 400);

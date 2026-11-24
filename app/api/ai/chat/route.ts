@@ -107,6 +107,10 @@ export async function POST(req: Request) {
     messages.push({ role: "assistant", text: "Parei aqui para não demorar demais. Diga \"continue\" se quiser que eu siga." });
     return respond(null);
   } catch (e) {
+    if (e instanceof ProviderError && e.switchedTo && e.switchedTo !== key.model) {
+      switched = e.switchedTo;
+      await updateModel(sb, provider, e.switchedTo);
+    }
     if (!(e instanceof ProviderError)) console.error("ai chat", e);
     return respond(null, e instanceof ProviderError ? e.message : "Algo deu errado ao falar com a IA. Tente de novo.");
   }
