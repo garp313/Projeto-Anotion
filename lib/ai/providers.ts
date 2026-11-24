@@ -4,7 +4,12 @@ import type { ToolDef } from "./tools";
 import type { ChatMsg, Provider, ToolCall } from "./types";
 
 /** `raw`: partes do Gemini como vieram. Ele exige recebê-las de volta sem mudança (assinaturas). */
-export type Reply = { text: string; calls: ToolCall[]; raw?: any[]; model?: string };
+/** `model`: troca definitiva (o salvo foi desativado). `served`: quem respondeu no lugar de um sobrecarregado. */
+export type Reply = { text: string; calls: ToolCall[]; raw?: any[]; model?: string; served?: string };
+
+/** Modelos que responderam "sobrecarregado" há pouco: ficam de lado por 2 minutos nesta instância. */
+const busy = new Map<string, number>();
+const BUSY_MS = 120_000;
 
 /** Erro que pode ser mostrado a quem usa. */
 export class ProviderError extends Error {
@@ -153,39 +158,55 @@ async function gemini(key: string, model: string, system: string, messages: Chat
   };
   let data: any;
   let used: string | undefined;
+  let served: string | undefined;
   let current = model;
-  // O Google desativa modelos e indica o substituto: passa a usar o indicado e guarda a troca.
-  const attempt = async () => {
+  const busyNow = (m: string) => (busy.get(m) ?? 0) > Date.now();
+  const tryModel = async (m: string) => {
     try {
-      return await call(current);
+      return await call(m);
+    } catch (e) {
+      if (e instanceof ProviderError && e.status === 503) busy.set(m, Date.now() + BUSY_MS);
+      throw e;
+    }
+  };
+  // O Google desativa modelos e indica o substituto: passa a usar o indicado e guarda a troca.
+  const saved = async () => {
+    try {
+      return await tryModel(current);
     } catch (e) {
       if (!(e instanceof ProviderError) || !e.replacement || e.replacement === current) throw e;
       current = used = e.replacement;
-      return await call(current);
+      if (busyNow(current)) throw overloaded();
+      return await tryModel(current);
     }
   };
+  const overloaded = () => new ProviderError("O Google está sobrecarregado agora. Tente de novo em alguns minutos.", 503);
   try {
-    try {
-      data = await attempt();
-    } catch (e) {
-      if (!(e instanceof ProviderError) || e.status !== 503 || until - Date.now() < 8000) throw e;
-      // Sobrecarga costuma passar rápido: espera e tenta de novo; depois, outros modelos Flash só desta vez.
-      await new Promise((r) => setTimeout(r, 2000));
-      try {
-        data = await attempt();
-      } catch (again) {
-        if (!(again instanceof ProviderError) || again.status !== 503) throw again;
-        console.warn("ai gemini sobrecarregado", current);
-        const others = suggestModels("gemini", (await listModels("gemini", key).catch(() => null)) ?? [])
-          .filter((m) => m !== current && m !== model).slice(0, 3);
-        for (const other of others) {
-          try { data = await call(other); console.warn("ai gemini respondeu com", other); break; } catch (err) {
-            console.warn("ai gemini alternativa falhou", other, err instanceof ProviderError ? err.status : "?");
-          }
-        }
-        if (!data) throw again;
+    let failure: unknown = null;
+    if (!busyNow(current)) {
+      try { data = await saved(); } catch (e) {
+        if (!(e instanceof ProviderError) || e.status !== 503) throw e;
+        failure = e;
       }
     }
+    if (!data) {
+      // Sobrecarga: outros modelos Flash da chave, só neste pedido, pulando os que acabaram de falhar.
+      console.warn("ai gemini sobrecarregado", current);
+      const others = suggestModels("gemini", (await listModels("gemini", key).catch(() => null)) ?? [])
+        .filter((m) => m !== current && m !== model && !busyNow(m)).slice(0, 3);
+      for (const other of others) {
+        try { data = await tryModel(other); served = other; console.warn("ai gemini respondeu com", other); break; } catch (err) {
+          console.warn("ai gemini alternativa falhou", other, err instanceof ProviderError ? err.status : "?");
+          if (!(err instanceof ProviderError) || err.status !== 503) failure = err;
+        }
+      }
+    }
+    if (!data && until - Date.now() > 10_000) {
+      // Último recurso: espera um pouco e tenta o modelo salvo de novo.
+      await new Promise((r) => setTimeout(r, 2000));
+      try { data = await saved(); } catch (e) { failure = e; }
+    }
+    if (!data) throw failure instanceof ProviderError && failure.status !== 503 ? failure : overloaded();
   } catch (e) {
     // Mesmo sem resposta, a troca de um modelo desativado fica salva para a próxima vez.
     if (e instanceof ProviderError && used) e.switchedTo = used;
@@ -203,6 +224,7 @@ async function gemini(key: string, model: string, system: string, messages: Chat
     })),
     ...(parts.length ? { raw: parts } : {}),
     ...(used ? { model: used } : {}),
+    ...(served ? { served } : {}),
   };
 }
 

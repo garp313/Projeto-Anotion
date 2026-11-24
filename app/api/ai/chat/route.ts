@@ -88,13 +88,17 @@ export async function POST(req: Request) {
 
   try {
     const system = await systemPrompt(sb, user, pageId);
+    let model = key.model;
     for (let round = 0; round < MAX_ROUNDS; round++) {
       // Perto do limite da Vercel: para aqui e guarda o que já foi feito.
       if (round > 0 && until - Date.now() < 12_000) break;
-      const reply = await ask(provider, key.apiKey, key.model, system, windowOf(messages), TOOLS, until);
+      const reply = await ask(provider, key.apiKey, model, system, windowOf(messages), TOOLS, until);
+      // Um modelo alternativo respondeu: segue com ele até o fim deste pedido.
+      if (reply.served) model = reply.served;
       if (reply.model && reply.model !== key.model) {
         // Modelo desativado: guarda o substituto para as próximas conversas.
         key.model = switched = reply.model;
+        if (!reply.served) model = reply.model;
         await updateModel(sb, provider, reply.model);
       }
       messages.push({ role: "assistant", text: reply.text, ...(reply.calls.length ? { calls: reply.calls } : {}), ...(reply.raw ? { raw: reply.raw } : {}) });
