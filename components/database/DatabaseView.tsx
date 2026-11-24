@@ -15,6 +15,7 @@ import { moveRowsToTasks } from "./moveRows";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { useDatabase, type Db } from "./useDatabase";
+import { AutomationsMenu } from "./Automations";
 import { BoardView, CalendarView, GalleryView, ListView, TableView, TimelineView } from "./views";
 import { Choice, CopyIdItem, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
 import { DateText } from "./DatePicker";
@@ -363,6 +364,7 @@ function Toolbar({ view, db, rows, search, setSearch, onNew, defaults, onCreated
           </button>
         ))}
       </Pop>
+      <AutomationsMenu db={db} />
       <Pop width={240} align="end" triggerClass={toolbarBtn} trigger={<><SlidersHorizontal size={13} /> Propriedades</>}>
         {db.schema.filter((c) => c.type !== "title").map((c) => {
           const hidden = view.hidden.includes(c.id);

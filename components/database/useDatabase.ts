@@ -12,6 +12,8 @@ import { spawnNextOccurrence } from "@/lib/tasks";
 import { memberName, scheduleEmails, useMembers, type Member } from "@/lib/collab";
 import { setRowProp } from "@/lib/rowProps";
 import { toast } from "@/lib/toast";
+import { applyPlan, automationsOf, planChange, planCreate, type Automation, type Plan } from "@/lib/automations";
+import { todayInBrazil } from "@/lib/scheduledEmail";
 
 const BASE_COLS = "id,workspace_id,parent_id,title,icon,cover,position,is_database,row_properties,created_at,updated_at";
 const FULL_COLS = `${BASE_COLS},created_by,last_edited_by,seq`;
@@ -195,8 +197,22 @@ export function useDatabase(databaseId: string) {
     onSuccess: (row) => {
       setRows((r) => [...r, row]);
       qc.invalidateQueries({ queryKey: rowsKey }); // traz seq e autoria gerados pelo banco
+      void runAutomations(row.id, planCreate(automationsOf(page.data), row, todayInBrazil()));
     },
   });
+
+  /** Aplica o que as automações do banco pediram: valores na tela e no banco, avisos no Inbox e e-mail. */
+  const runAutomations = async (rowId: string, plan: Plan) => {
+    if (!plan.fired.length) return;
+    if (Object.keys(plan.props).length) {
+      setRows((rows) => rows.map((r) => (r.id === rowId ? { ...r, row_properties: { ...r.row_properties, ...plan.props } } : r)));
+    }
+    const { email } = await applyPlan(supabase, rowId, plan);
+    if (email) scheduleEmails();
+    if (Object.keys(plan.props).length) qc.invalidateQueries({ queryKey: rowsKey });
+    const names = automationsOf(page.data).filter((a) => plan.fired.includes(a.id)).map((a) => a.name);
+    toast({ message: `Automação: ${names.join(", ")}` });
+  };
 
   const setValue = useMutation({
     mutationFn: async ({ rowId, colId, value }: { rowId: string; colId: string; value: any }) => {
@@ -232,6 +248,11 @@ export function useDatabase(databaseId: string) {
       toast({ message: e?.code === "42501" ? "Você não tem permissão para editar este banco." : "Não foi possível salvar a alteração. Tente de novo." });
     },
     onSuccess: async (_d, { rowId, colId, value }, c) => {
+      const changedRow = qc.getQueryData<DatabaseRow[]>(rowsKey)?.find((r) => r.id === rowId);
+      if (changedRow) {
+        const before = c?.prev?.find((r) => r.id === rowId)?.row_properties?.[colId];
+        void runAutomations(rowId, planChange(automationsOf(page.data), schema, changedRow, colId, before, value, todayInBrazil()));
+      }
       const col = schema.find((x) => x.id === colId);
       const synced = page.data?.row_properties?.__calendarSync;
       if (synced && (colId === synced || col?.type === "title")) pushToCalendar(rowId);
@@ -448,6 +469,8 @@ export function useDatabase(databaseId: string) {
     isLoading: rowsQuery.isLoading || page.isLoading,
     error: rowsQuery.error ?? page.error,
     saveSchema, saveColumn, addColumn, removeColumn, linkRelation, linkRollup, unlinkMirror, addSelfRelation, createRelated, setViews, saveView, patchProp,
+    automations: automationsOf(page.data),
+    setAutomations: (next: Automation[]) => patchProp("__automations", next),
     templates, setTemplates, saveTemplate, setCalendarSync, defaultTemplateId, setDefaultTemplate,
     addRow: (init?: NewRow) => addRow.mutateAsync(init ?? {}),
     setValue: (rowId: string, colId: string, value: any) => {

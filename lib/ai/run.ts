@@ -4,6 +4,7 @@ import { DEFAULT_SCHEMA, DEFAULT_STATUS_OPTIONS, databasePatch, type ColumnSchem
 import { fold } from "@/lib/import/parsers";
 import { timeInBrazil, todayInBrazil } from "@/lib/scheduledEmail";
 import type { ToolCall } from "./types";
+import { applyPlan, automationsOf, isDone, planChange, planCreate } from "@/lib/automations";
 import { blocksToText, columnFrom, showValue, textToBlocks, toStored, typeName, type Person } from "./values";
 
 type Sb = SupabaseClient;
@@ -135,21 +136,6 @@ async function lerPagina(sb: Sb, args: any) {
   return base;
 }
 
-const DONE = ["concluido", "concluida", "feito", "feita", "done", "finalizado", "finalizada", "entregue", "encerrado", "cancelado"];
-
-/** A linha está concluída? Status no grupo "concluído", opção com nome de concluído ou caixa marcada chamada Concluído/Feito. */
-function isDone(schema: ColumnSchema[], props: Record<string, any>) {
-  for (const c of schema) {
-    const v = props?.[c.id];
-    if ((c.type === "status" || c.type === "select") && v) {
-      const o = c.options?.find((x) => x.id === v);
-      if (o && (o.group === "complete" || DONE.includes(fold(o.value)))) return true;
-    }
-    if (c.type === "checkbox" && v === true && DONE.some((d) => fold(c.name).startsWith(d.slice(0, 6)))) return true;
-  }
-  return false;
-}
-
 /** Coluna de prazo: a de data com nome de prazo; sem ela, a primeira de data. */
 function dueColumn(schema: ColumnSchema[]) {
   const dates = schema.filter((c) => c.type === "date");
@@ -256,9 +242,12 @@ async function adicionarLinhas(sb: Sb, args: any, dated: string[]) {
     };
   });
   if (JSON.stringify(schema) !== before) await saveSchema(sb, db.id, schema);
-  const { data, error } = await sb.from("pages").insert(rows.map(({ dated: _, ...r }) => r)).select("id,title");
+  const { data, error } = await sb.from("pages").insert(rows.map(({ dated: _, ...r }) => r)).select("id,title,row_properties,created_by");
   if (error) throw new ToolError(error.message);
   (data ?? []).forEach((r, i) => { if (rows[i]?.dated) dated.push(r.id); });
+  // Linhas criadas pela IA disparam as mesmas automações de quando alguém cria pela tela.
+  const rules = automationsOf(db);
+  if (rules.length) for (const r of data ?? []) await applyPlan(sb, r.id, planCreate(rules, r, todayInBrazil()));
   return { banco: db.title, criadas: (data ?? []).map((r) => ({ id: r.id, titulo: r.title })), ...(warn.length ? { avisos: warn } : {}) };
 }
 
@@ -267,11 +256,12 @@ async function editarLinhas(sb: Sb, args: any, dated: string[]) {
   if (!input.length) throw new ToolError("nenhuma linha informada");
   if (input.length > MAX_ROWS) throw new ToolError(`no máximo ${MAX_ROWS} linhas por vez`);
   const ids = input.map((r) => String(r?.id ?? "")).filter((id) => UUID.test(id));
-  const { data: found } = await sb.from("pages").select("id,title,parent_id").in("id", ids).eq("is_archived", false);
+  const { data: found } = await sb.from("pages").select("id,title,parent_id,row_properties,created_by").in("id", ids).eq("is_archived", false);
   const rowById = new Map((found ?? []).map((r) => [r.id, r]));
   const dbIds = [...new Set((found ?? []).map((r) => r.parent_id).filter(Boolean))] as string[];
   const { data: dbs } = dbIds.length ? await sb.from("pages").select(PAGE).in("id", dbIds) : { data: [] };
   const schemas = new Map(((dbs ?? []) as unknown as Page[]).filter((d) => d.is_database).map((d) => [d.id, structuredClone(schemaOf(d))]));
+  const rulesOf = new Map(((dbs ?? []) as unknown as Page[]).map((d) => [d.id, automationsOf(d)]));
   const before = new Map([...schemas].map(([id, s]) => [id, JSON.stringify(s)]));
   const people = await members(sb);
   const warn: string[] = [];
@@ -295,9 +285,16 @@ async function editarLinhas(sb: Sb, args: any, dated: string[]) {
       if (error) { warn.push(`"${j.id}": ${error.message}`); continue; }
     }
     // Uma propriedade por vez: não desfaz o que outra pessoa mudou na mesma linha.
+    const row = rowById.get(j.id)!;
+    const rules = rulesOf.get(row.parent_id) ?? [];
     for (const [key, value] of Object.entries(j.props)) {
       const { error } = await sb.rpc("set_row_prop", { p_page: j.id, p_key: key, p_value: value });
-      if (error) warn.push(`"${rowById.get(j.id)?.title}": ${error.message}`);
+      if (error) { warn.push(`"${row.title}": ${error.message}`); continue; }
+      // A mudança feita pela IA dispara as automações do banco, como pela tela.
+      if (rules.length) {
+        const plan = planChange(rules, schemas.get(row.parent_id) ?? [], { ...row, title: j.title ?? row.title }, key, row.row_properties?.[key], value, todayInBrazil());
+        if (plan.fired.length) await applyPlan(sb, j.id, plan);
+      }
     }
     changed++;
   }

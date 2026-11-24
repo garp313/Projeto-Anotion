@@ -6,6 +6,7 @@ import { createTaskFromMessage, defaultTaskDatabase } from "@/lib/google/emailTa
 import { ensureChannel, sameSecret } from "@/lib/google/sync";
 import { sendDueEmails } from "@/lib/google/scheduled";
 import { todayInBrazil } from "@/lib/scheduledEmail";
+import { runOverdueAutomations } from "@/lib/automationsCron";
 
 const LABEL_QUERY = 'label:"→Tarefa" newer_than:30d';
 export async function GET(req: Request) {
@@ -18,7 +19,8 @@ export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const { data: accounts } = await admin.from("google_accounts").select("user_id").eq("status", "ok");
   const scheduled = await sendDueEmails(admin, origin, todayInBrazil()).catch((e) => { console.error(e); return { sent: 0, failed: 1 }; });
-  const report = { labeled: 0, channels: 0, failed: 0, scheduled };
+  const overdue = await runOverdueAutomations(admin, origin, todayInBrazil()).catch((e) => { console.error("automações", e); return null; });
+  const report = { labeled: 0, channels: 0, failed: 0, scheduled, overdue };
 
   for (const account of accounts ?? []) {
     try {
