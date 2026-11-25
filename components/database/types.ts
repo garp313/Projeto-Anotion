@@ -46,7 +46,7 @@ export type PersonValue = { id?: string; name: string };
 export type FileValue = { name: string; path?: string; url?: string };
 export type ChecklistItem = { id: string; text: string; done: boolean };
 
-export type ViewType = "table" | "board" | "list" | "gallery" | "calendar" | "timeline";
+export type ViewType = "table" | "board" | "list" | "gallery" | "calendar" | "timeline" | "charts";
 
 export type FilterOp =
   | "contains" | "not_contains" | "is" | "is_not" | "starts_with" | "ends_with"
@@ -71,6 +71,8 @@ export type DatabaseViewConfig = {
   calcs?: Record<string, RollupFn>;
   cardSize?: "small" | "medium" | "large";
   hideEmpty?: boolean;
+  /** Visão Gráficos: quais gráficos mostrar. Sem valor, o app monta por status, por responsável e atrasadas. */
+  charts?: { id: string; kind: "group" | "overdue_weeks" | "created_weeks"; col?: string }[];
 };
 
 export type DatabaseRow = {
@@ -149,7 +151,7 @@ export const PROP_LABEL: Record<PropType, string> = {
 };
 
 export const VIEW_LABEL: Record<ViewType, string> = {
-  table: "Tabela", board: "Quadro", list: "Lista", gallery: "Galeria", calendar: "Calendário", timeline: "Linha do tempo",
+  table: "Tabela", board: "Quadro", list: "Lista", gallery: "Galeria", calendar: "Calendário", timeline: "Linha do tempo", charts: "Gráficos",
 };
 
 /** Tipos calculados: o usuário não edita o valor diretamente. */

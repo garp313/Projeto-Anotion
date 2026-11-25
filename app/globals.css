@@ -18,9 +18,15 @@
   --n-border: rgba(55, 53, 47, 0.09);
   --n-callout: #f1f1ef;
   --n-accent: #2383e2;
+  /* Gráficos: duas cores da paleta validada (daltonismo e contraste) e o vermelho de alerta. */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-critical: #d03b3b;
 }
 :root[data-theme="dark"] {
     color-scheme: dark;
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
     --n-bg: #191919;
     --n-bg-sidebar: #202020;
     --n-hover: rgba(255, 255, 255, 0.055);

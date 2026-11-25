@@ -51,6 +51,12 @@ export function isDone(schema: ColumnSchema[], props: Record<string, any>) {
   return false;
 }
 
+/** Coluna de prazo: a de data com nome de prazo; sem ela, a primeira de data. */
+export function dueColumn(schema: ColumnSchema[]) {
+  const dates = schema.filter((c) => c.type === "date");
+  return dates.find((c) => /prazo|entrega|venc|data|fim|termino|deadline/.test(fold(c.name))) ?? dates[0];
+}
+
 const empty = (): Plan => ({ props: {}, notices: [], fired: [] });
 const label = (row: Row) => `“${row.title?.trim() || "Sem título"}”`;
 

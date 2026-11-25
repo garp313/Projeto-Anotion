@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowUpDown, ArrowUpRight, Calendar, ChevronDown, Columns3, Copy, Download, Eye, EyeOff, Filter as FilterIcon, GalleryHorizontalEnd, GanttChart, Kanban, Layers,
-  Link2, List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Star, Table, Trash2, Upload, X,
+  Link2, List, Maximize2, MoreHorizontal, MoveRight, Pencil, Plus, Search, SlidersHorizontal, Star, Table, Trash2, Upload, X, BarChart3,
 } from "lucide-react";
 import type { DatabaseRow, DatabaseViewConfig, Filter, FilterOp, PropType, ViewType } from "./types";
 import { VIEW_LABEL, defaultView, newId } from "./types";
@@ -16,6 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePageTree } from "@/lib/hooks/usePageTree";
 import { useDatabase, type Db } from "./useDatabase";
 import { AutomationsMenu } from "./Automations";
+import { ChartsView } from "./ChartsView";
 import { BoardView, CalendarView, GalleryView, ListView, TableView, TimelineView } from "./views";
 import { Choice, CopyIdItem, Pop, PropIcon, fieldClass, menuItem, toolbarBtn } from "./ui";
 import { DateText } from "./DatePicker";
@@ -32,9 +33,9 @@ const ImportWizard = dynamic(() => import("@/components/import/ImportWizard").th
 const PageView = dynamic(() => import("@/components/editor/PageView").then((m) => m.PageView), { ssr: false });
 
 const VIEW_ICON: Record<ViewType, typeof Table> = {
-  table: Table, board: Kanban, list: List, gallery: GalleryHorizontalEnd, calendar: Calendar, timeline: GanttChart,
+  table: Table, board: Kanban, list: List, gallery: GalleryHorizontalEnd, calendar: Calendar, timeline: GanttChart, charts: BarChart3,
 };
-const VIEWS = { table: TableView, board: BoardView, list: ListView, gallery: GalleryView, calendar: CalendarView, timeline: TimelineView };
+const VIEWS = { table: TableView, board: BoardView, list: ListView, gallery: GalleryView, calendar: CalendarView, timeline: TimelineView, charts: ChartsView };
 const selectClass = "rounded border border-[var(--n-border)] bg-[var(--n-bg)] px-1 py-0.5 text-xs outline-none";
 
 function ViewTab({ view, active, db, onPick, onRemoved }: {

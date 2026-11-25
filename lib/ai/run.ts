@@ -4,7 +4,7 @@ import { DEFAULT_SCHEMA, DEFAULT_STATUS_OPTIONS, databasePatch, type ColumnSchem
 import { fold } from "@/lib/import/parsers";
 import { timeInBrazil, todayInBrazil } from "@/lib/scheduledEmail";
 import type { ToolCall } from "./types";
-import { applyPlan, automationsOf, isDone, planChange, planCreate } from "@/lib/automations";
+import { applyPlan, automationsOf, dueColumn, isDone, planChange, planCreate } from "@/lib/automations";
 import { blocksToText, columnFrom, showValue, textToBlocks, toStored, typeName, type Person } from "./values";
 
 type Sb = SupabaseClient;
@@ -134,12 +134,6 @@ async function lerPagina(sb: Sb, args: any) {
   }
   base.texto = blocksToText(p.content_json);
   return base;
-}
-
-/** Coluna de prazo: a de data com nome de prazo; sem ela, a primeira de data. */
-function dueColumn(schema: ColumnSchema[]) {
-  const dates = schema.filter((c) => c.type === "date");
-  return dates.find((c) => /prazo|entrega|venc|data|fim|termino|deadline/.test(fold(c.name))) ?? dates[0];
 }
 
 async function listarLinhas(sb: Sb, args: any) {
